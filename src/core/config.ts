@@ -49,18 +49,17 @@ export const TRAVERSAL = {
 };
 
 export const CAMERA = {
-  distance: 4.6,
+  distance: 3.9,
   minDistance: 2.2,
   maxDistance: 9,
   aimDistance: 2.4,
   /** Deslocamento lateral "por cima do ombro". */
-  shoulderOffset: 0.55,
-  aimShoulderOffset: 0.7,
+  shoulderOffset: 0.75,
+  aimShoulderOffset: 0.8,
   /** Altura do ponto mirado acima dos pés do personagem. */
   targetHeight: 1.55,
   crouchTargetHeight: 1.1,
   sensitivity: 0.0024,
-  aimSensitivityScale: 0.6,
   minBeta: 0.3,
   maxBeta: 1.75,
   followSharpness: 16,

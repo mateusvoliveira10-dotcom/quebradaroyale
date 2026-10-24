@@ -412,18 +412,24 @@ export class Menu {
     const s = this.settings;
     const name = el<HTMLInputElement>('set-name');
     const sens = el<HTMLInputElement>('set-sens');
+    const aim = el<HTMLInputElement>('set-aim');
+    const scope = el<HTMLInputElement>('set-scope');
     const inv = el<HTMLInputElement>('set-invert');
     const fov = el<HTMLInputElement>('set-fov');
     const vol = el<HTMLInputElement>('set-vol');
     const q = el<HTMLSelectElement>('set-quality');
     name.value = s.playerName;
     sens.value = String(s.sensitivity);
+    aim.value = String(s.aimSensitivity);
+    scope.value = String(s.scopeSensitivity);
     inv.checked = s.invertY;
     fov.value = String(s.fov);
     vol.value = String(s.volume);
     q.value = s.quality;
     const labels = () => {
       el('set-sens-val').textContent = `${Number(sens.value).toFixed(2)}x`;
+      el('set-aim-val').textContent = `${Math.round(Number(aim.value) * 100)}%`;
+      el('set-scope-val').textContent = `${Math.round(Number(scope.value) * 100)}%`;
       el('set-fov-val').textContent = `${fov.value}°`;
       el('set-vol-val').textContent = `${Math.round(Number(vol.value) * 100)}%`;
     };
@@ -432,6 +438,8 @@ export class Menu {
       this.settings = {
         playerName: name.value.trim().slice(0, 18) || 'Cria da Quebrada',
         sensitivity: Number(sens.value),
+        aimSensitivity: Number(aim.value),
+        scopeSensitivity: Number(scope.value),
         invertY: inv.checked,
         fov: Number(fov.value),
         volume: Number(vol.value),
@@ -441,7 +449,7 @@ export class Menu {
       el('lobby-name').textContent = this.settings.playerName;
       this.onSettings?.(this.settings);
     };
-    for (const input of [name, sens, inv, fov, vol, q]) input.addEventListener('input', commit);
+    for (const input of [name, sens, aim, scope, inv, fov, vol, q]) input.addEventListener('input', commit);
     for (const input of [inv, q]) input.addEventListener('change', commit);
     el('lobby-name').textContent = s.playerName;
   }

@@ -3,6 +3,10 @@ export type Quality = 'alta' | 'media' | 'baixa';
 export interface Settings {
   /** Multiplicador da sensibilidade do mouse. */
   sensitivity: number;
+  /** Sensibilidade ao mirar (botão direito), fração da normal. */
+  aimSensitivity: number;
+  /** Sensibilidade na luneta do rifle de precisão, fração da normal. */
+  scopeSensitivity: number;
   invertY: boolean;
   /** Campo de visão em graus. */
   fov: number;
@@ -15,7 +19,7 @@ export interface Settings {
 const KEY = 'quebrada-royale.settings.v1';
 
 export function defaultSettings(): Settings {
-  return { sensitivity: 1, invertY: false, fov: 53, volume: 0.8, quality: 'alta', playerName: 'Cria da Quebrada' };
+  return { sensitivity: 1, aimSensitivity: 0.65, scopeSensitivity: 0.65, invertY: false, fov: 53, volume: 0.8, quality: 'alta', playerName: 'Cria da Quebrada' };
 }
 
 export function loadSettings(): Settings {
@@ -27,6 +31,8 @@ export function loadSettings(): Settings {
     const num = (v: unknown, min: number, max: number, fb: number) => (typeof v === 'number' && isFinite(v) ? Math.min(max, Math.max(min, v)) : fb);
     return {
       sensitivity: num(o.sensitivity, 0.2, 3, d.sensitivity),
+      aimSensitivity: num(o.aimSensitivity, 0.1, 1.5, d.aimSensitivity),
+      scopeSensitivity: num(o.scopeSensitivity, 0.1, 1.5, d.scopeSensitivity),
       invertY: typeof o.invertY === 'boolean' ? o.invertY : d.invertY,
       fov: num(o.fov, 40, 75, d.fov),
       volume: num(o.volume, 0, 1, d.volume),

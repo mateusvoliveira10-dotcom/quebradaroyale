@@ -353,6 +353,9 @@ export class Game {
     // A confirmação da captura chega alguns ms depois do clique: tolera um instante.
     this.uncapturedFor = uncaptured ? this.uncapturedFor + dt : 0;
     const waiting = uncaptured && (this.waitingCapture || this.uncapturedFor > 0.3);
+    // Setinha do mouse nunca aparece com a partida rodando (nem no modo mouse livre): só em
+    // menus, pausa e no aviso "clique para jogar".
+    document.body.classList.toggle('jogando', this.input.active && !waiting);
     if (waiting !== this.waitingCapture) {
       this.waitingCapture = waiting;
       this.overlays.clickToPlay(waiting, () => this.input.lockPointer());
@@ -366,7 +369,7 @@ export class Game {
   applySettings(s: Settings): void {
     this.settings = s;
     saveSettings(s);
-    this.camera.prefs = { sensitivity: s.sensitivity, invertY: s.invertY, fov: (s.fov * Math.PI) / 180 };
+    this.camera.prefs = { sensitivity: s.sensitivity, aimSensitivity: s.aimSensitivity, scopeSensitivity: s.scopeSensitivity, invertY: s.invertY, fov: (s.fov * Math.PI) / 180 };
     this.audio.setMasterVolume(s.volume);
     music.setVolume(s.volume);
     this.player.name = s.playerName;
@@ -470,7 +473,8 @@ export class Game {
     w.aimHeld = i.isMouseDown(2);
     w.reload = i.wasPressed('KeyR');
     w.select = i.wasPressed('Digit1') ? 0 : i.wasPressed('Digit2') ? 1 : null;
-    w.swap = i.wasPressed('KeyQ');
+    // Q ou a rodinha do mouse alternam as armas (a rodinha não dá mais zoom na câmera).
+    w.swap = i.wasPressed('KeyQ') || i.wheel !== 0;
     return w;
   }
 
@@ -517,6 +521,7 @@ export class Game {
       aiming: this.playerWeapons.aiming,
       sprinting: p.sprinting && p.grounded,
       aimFov: this.playerWeapons.aimFov,
+      scoped: this.playerWeapons.scoped,
     });
   }
 

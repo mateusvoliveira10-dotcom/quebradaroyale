@@ -24,12 +24,17 @@ export interface LootItem {
   beam?: Mesh;
   phase: number;
   visible: boolean;
+  /** Brilho/anel/feixe ligados (só de perto: de longe a arma não pode "entregar" onde está). */
+  glowOn?: boolean;
 }
 
 export interface LootPrompt {
   text: string;
   color: string;
 }
+
+/** Até essa distância (m) o loot brilha (anel, feixe e glow); mais longe é só o objeto no chão. */
+const GLOW_RANGE = 14;
 
 /** Pesos de raridade por nível do ponto de loot. */
 const RARITY_WEIGHTS: Record<number, number[]> = {
@@ -215,7 +220,9 @@ export class LootSystem {
     beam.material = this.beamMats[rarity];
     beam.isPickable = false;
     const glowMeshes = [ring, ...model.accents];
-    for (const m of glowMeshes) this.glow.addIncludedOnlyMesh(m);
+    // Brilho começa desligado: liga quando o jogador chega perto (updatePlayer).
+    ring.setEnabled(false);
+    beam.setEnabled(false);
     this.items.push({
       kind: 'weapon', pos, root, meshes: [ring, beam, ...model.meshes], glowMeshes, def, rarity, mag, amount: 1,
       model, beam, phase: Math.random() * Math.PI * 2, visible: true,
@@ -239,7 +246,6 @@ export class LootSystem {
     lid.parent = root;
     root.rotation.y = Math.random() * Math.PI;
     for (const m of [crate, band, lid]) m.isPickable = false;
-    this.glow.addIncludedOnlyMesh(band);
     this.items.push({ kind: 'ammo', pos, root, meshes: [crate, band, lid], glowMeshes: [band], rarity: 0, ammoType: type, amount, phase: 0, visible: true });
   }
 
@@ -282,6 +288,19 @@ export class LootSystem {
           it.visible = vis;
           it.root.setEnabled(vis);
         }
+        // Como no Fortnite: a cor da raridade (anel, feixe, brilho) só aparece de perto.
+        const near = vis && d < GLOW_RANGE;
+        if (near !== !!it.glowOn) {
+          it.glowOn = near;
+          for (const m of it.glowMeshes) {
+            if (near) this.glow.addIncludedOnlyMesh(m);
+            else this.glow.removeIncludedOnlyMesh(m);
+          }
+          if (it.kind === 'weapon') {
+            it.meshes[0].setEnabled(near);
+            it.beam?.setEnabled(near);
+          }
+        }
       }
     }
 
@@ -291,7 +310,12 @@ export class LootSystem {
       it.model.root.rotation.y += dt * 1.4;
       it.model.root.position.y = 0.62 + Math.sin(it.phase * 2.2) * 0.07;
       it.model.root.scaling.setAll(1);
-      if (it.beam) it.beam.visibility = 0.75 + Math.sin(it.phase * 3) * 0.25;
+      if (it.beam && it.glowOn) {
+        // Some aos poucos na borda do alcance (sem "estalo").
+        const d = Vector3.Distance(it.pos, p);
+        const fade = Math.min(1, Math.max(0, (GLOW_RANGE - d) / 4));
+        it.beam.visibility = (0.75 + Math.sin(it.phase * 3) * 0.25) * fade;
+      }
     }
 
     this.nearest = null;

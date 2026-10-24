@@ -15,6 +15,8 @@ export interface FollowOptions {
   centered?: boolean;
   /** FOV ao mirar (ex.: luneta). */
   aimFov?: number;
+  /** Olhando pela luneta (usa a sensibilidade da luneta). */
+  scoped?: boolean;
   /** FOV fixo (ex.: lobby). */
   fovOverride?: number;
   /** Ignora colisão da câmera (ex.: lobby, avião). */
@@ -24,6 +26,10 @@ export interface FollowOptions {
 /** Ajustes do jogador (Configurações). */
 export interface CameraPrefs {
   sensitivity: number;
+  /** Fração da sensibilidade ao mirar (como "Targeting sensitivity" do Fortnite). */
+  aimSensitivity: number;
+  /** Fração ao olhar pela luneta ("Scope sensitivity"). */
+  scopeSensitivity: number;
   invertY: boolean;
   fov: number;
 }
@@ -38,7 +44,7 @@ export interface CameraPrefs {
  */
 export class ThirdPersonCamera {
   readonly camera: ArcRotateCamera;
-  prefs: CameraPrefs = { sensitivity: 1, invertY: false, fov: CAMERA.fov };
+  prefs: CameraPrefs = { sensitivity: 1, aimSensitivity: 0.65, scopeSensitivity: 0.65, invertY: false, fov: CAMERA.fov };
   /** Malhas que a câmera deve ignorar (ex.: colisores dos personagens). */
   ignore: (m: AbstractMesh) => boolean = () => false;
   /** Colisores estáticos do mapa (quando há, a colisão da câmera usa o índice). */
@@ -52,6 +58,7 @@ export class ThirdPersonCamera {
   private shakeAmount = 0;
   private dip = 0;
   private aimingNow = false;
+  private scopedNow = false;
   /** Coice acumulado ainda não recuperado (rad). */
   private recoilPitch = 0;
   private recoilYaw = 0;
@@ -101,15 +108,17 @@ export class ThirdPersonCamera {
   /** Aplica o giro do mouse e o zoom. Chamar antes de mover o jogador. */
   updateRotation(): void {
     const cam = this.camera;
-    const sens = CAMERA.sensitivity * this.prefs.sensitivity * (this.aimingNow ? CAMERA.aimSensitivityScale : 1);
+    // Como no Fortnite: ao mirar vale a fração "ao mirar"; na luneta, a fração "na luneta",
+    // compensada pelo zoom (o giro na tela fica parecido com o da mira normal).
+    const p = this.prefs;
+    const zoom = this.scopedNow ? this.camera.fov / CAMERA.aimFov : 1;
+    const scale = this.scopedNow ? p.scopeSensitivity * zoom : this.aimingNow ? p.aimSensitivity : 1;
+    const sens = CAMERA.sensitivity * p.sensitivity * scale;
     const dy = this.input.mouseDY * (this.prefs.invertY ? -1 : 1);
     cam.alpha -= this.input.mouseDX * sens;
     cam.beta = clamp(cam.beta - dy * sens, CAMERA.minBeta, CAMERA.maxBeta);
     // Mantém alpha num intervalo estável (evita perda de precisão após muitas voltas).
     if (cam.alpha > Math.PI * 4 || cam.alpha < -Math.PI * 4) cam.alpha %= Math.PI * 2;
-    if (this.input.wheel !== 0) {
-      this.desiredRadius = clamp(this.desiredRadius + this.input.wheel * 0.6, CAMERA.minDistance, CAMERA.maxDistance);
-    }
   }
 
   /** Coice da arma: sobe a mira e treme um pouco. */
@@ -151,6 +160,7 @@ export class ThirdPersonCamera {
   /** Segue um ponto (pés do personagem, avião, lobby) tratando colisão com o cenário. */
   updateFollow(dt: number, feetPosition: Vector3, o: FollowOptions): void {
     this.aimingNow = o.aiming;
+    this.scopedNow = !!o.scoped && o.aiming;
     this.recoverRecoil(dt);
     const goal = new Vector3(feetPosition.x, feetPosition.y + o.height - this.dip, feetPosition.z);
     this.dip = Math.max(0, this.dip - dt * 1.4);
@@ -172,7 +182,7 @@ export class ThirdPersonCamera {
     }
 
     const shoulderGoal = o.centered ? 0 : o.aiming ? CAMERA.aimShoulderOffset : CAMERA.shoulderOffset;
-    this.shoulder += (shoulderGoal - this.shoulder) * damp(10, dt);
+    this.shoulder += (shoulderGoal - this.shoulder) * damp(18, dt);
     const radiusTarget = o.distanceOverride ?? (o.aiming ? CAMERA.aimDistance : this.desiredRadius);
     // Distância suavizada: trocas de fase (avião → queda → paraquedas → chão) e a mira
     // aproximam/afastam a câmera em vez de pular.
@@ -180,7 +190,8 @@ export class ThirdPersonCamera {
       this.radiusNow = radiusTarget;
       this.radiusInit = true;
     }
-    this.radiusNow += (radiusTarget - this.radiusNow) * damp(Math.abs(radiusTarget - this.radiusNow) > 6 ? 2.2 : 12, dt);
+    // Mira: entra e sai rápido (~0,15 s, como no Fortnite); trocas grandes de fase, suave.
+    this.radiusNow += (radiusTarget - this.radiusNow) * damp(Math.abs(radiusTarget - this.radiusNow) > 6 ? 2.2 : 20, dt);
     const radiusGoal = this.radiusNow;
 
     const { alpha, beta } = this.camera;
@@ -229,7 +240,7 @@ export class ThirdPersonCamera {
 
     const baseFov = o.fovOverride ?? this.prefs.fov;
     const fovGoal = o.aiming ? (o.aimFov ?? CAMERA.aimFov) : baseFov + (o.sprinting ? CAMERA.sprintFovBoost : 0);
-    this.camera.fov += (fovGoal - this.camera.fov) * damp(8, dt);
+    this.camera.fov += (fovGoal - this.camera.fov) * damp(o.aiming ? 18 : 10, dt);
   }
 
   /** Raio de mira a partir do centro da tela. */

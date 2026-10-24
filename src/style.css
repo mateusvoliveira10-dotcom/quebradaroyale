@@ -1340,3 +1340,9 @@ body.dm #topbar { display: none; }
   #custom-panel, #settings-panel { width: auto; left: 22px; top: 40%; }
   .card.wide { min-width: 0; }
 }
+
+/* Partida rodando: sem setinha do mouse (menus, pausa e "clique para jogar" mostram). */
+body.jogando,
+body.jogando * {
+  cursor: none !important;
+}

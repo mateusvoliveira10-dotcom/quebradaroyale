@@ -64,6 +64,8 @@ Blender, centenas de MB) e `backups/` não vão para o repositório.
 - **Dano:** crítico na cabeça por arma (escopeta 1,5x; submetralhadora 1,75x; pistola e fuzil 2x;
   rifle de precisão 2,5x) e queda de dano com a distância (forte na escopeta). Atirar interrompe
   o sprint.
+- **Mira (estilo Fortnite):** câmera de ombro mais próxima (3,9 m, personagem no terço esquerdo), entrada e saída da mira em ~0,15 s, sensibilidade separada **ao mirar** e **na luneta** (Configurações, padrão 65%, a da luneta compensada pelo zoom) e rodinha do mouse trocando de arma (como Q). A setinha do mouse fica escondida durante a partida (classe `jogando` no body); só aparece em menus, pausa e "clique para jogar".
+- **Loot sem entregar posição:** anel, feixe de luz e brilho da raridade só acendem a menos de 14 m (`GLOW_RANGE` em `LootSystem.ts`); de longe a arma é só um objeto no chão.
 - **HUD:** números de dano brancos (vida), azuis (escudo) e amarelos (crítico); marcador vermelho
   e faixa **ELIMINADO** (com sequência x2, x3…) a cada eliminação sua; arcos em volta da mira
   apontando de onde veio o dano (azul quando bateu no escudo); barras de escudo nos inimigos.
