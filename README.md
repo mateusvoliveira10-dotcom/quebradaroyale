@@ -27,6 +27,21 @@ ou ajuste as configurações e clique em **JOGAR**.
 | `npm run build`     | Checa tipos e gera a versão de produção em `dist/` |
 | `npm run preview`   | Serve a pasta `dist/` localmente                    |
 
+## Publicar de graça (GitHub Pages)
+
+O repositório já vem pronto: `.github/workflows/deploy.yml` gera o build e publica a cada push na
+branch `main`, e o Vite usa caminhos relativos (`base: './'`), então o jogo funciona em
+`https://<usuario>.github.io/<repositorio>/`.
+
+1. Crie um repositório **público** vazio no GitHub (sem README).
+2. Na pasta do jogo: `git remote add origin https://github.com/<usuario>/<repositorio>.git` e
+   `git push -u origin main`.
+3. No GitHub: **Settings → Pages → Source: GitHub Actions**. O primeiro deploy leva ~2 minutos
+   (aba **Actions**); depois o link aparece em Settings → Pages.
+
+Para atualizar: `git add -A`, `git commit -m "..."` e `git push`. A pasta `art/` (fontes do
+Blender, centenas de MB) e `backups/` não vão para o repositório.
+
 ## Modos
 
 - **Battle Royale (30 participantes: você + 29 bots).** Entrada sempre pelo avião. `Espaço` salta. Se você não saltar,
