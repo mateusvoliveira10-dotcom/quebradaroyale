@@ -99,6 +99,25 @@ export class WorldAssets {
       assets.props.set(name, model);
     }
     vegetation.dispose();
+    // Props de favela (`favela_props.py`: Lixo_a/b/c, Pneu, PilhaPneus, BarricadaPneus,
+    // BarricadaMadeira) e armas (`weapons.py`: Arma_<id>). Opcionais: sem eles o jogo usa
+    // as versões antigas feitas de primitivas.
+    await Promise.all(
+      ['favela.glb', 'weapons.glb'].map(async (file) => {
+        try {
+          const c = await LoadAssetContainerAsync(`${base}${file}`, scene);
+          const models = collect(scene, c.meshes);
+          for (const [name, model] of models) {
+            if (name.startsWith('Col_')) continue;
+            model.colliders.push(...(models.get(`Col_${name}`)?.colliders ?? []));
+            assets.props.set(name, model);
+          }
+          c.dispose();
+        } catch (err) {
+          console.warn(`[Mapa] ${file} não carregou; usando a versão antiga.`, err);
+        }
+      }),
+    );
     const carModels = collect(scene, cars.meshes);
     for (const id of CAR_MODELS) {
       const model = carModels.get(`Car_${id}`);

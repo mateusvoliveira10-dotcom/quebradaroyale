@@ -8,3 +8,4 @@ backups
 art
 # Configuração local do Claude Code / editor.
 .claude
+__pycache__

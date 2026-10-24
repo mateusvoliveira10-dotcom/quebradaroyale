@@ -283,7 +283,7 @@ export class LootSystem {
       this.cullTimer = 0.3;
       for (const it of this.items) {
         const d = Vector3.Distance(it.pos, p);
-        const vis = d < (it.kind === 'weapon' ? 95 : 45);
+        const vis = d < (it.kind === 'weapon' ? 70 : 45);
         if (vis !== it.visible) {
           it.visible = vis;
           it.root.setEnabled(vis);

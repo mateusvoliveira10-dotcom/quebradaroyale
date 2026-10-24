@@ -167,7 +167,36 @@
     <div id="loading" class="overlay">
       <img class="logo" src="/logo.webp" alt="Quebrada Royale" draggable="false" />
       <p id="loading-text">Carregando a comunidade…</p>
+      <p id="loading-sound" class="hidden">🔊 Clique ou aperte uma tecla para ligar o som</p>
     </div>
+    <script>
+      // Música tema já na logo, antes do jogo (6 MB) terminar de baixar. O Music.ts assume
+      // este mesmo áudio depois. Navegadores bloqueiam som antes de qualquer interação na
+      // primeira visita: aí ela começa no primeiro clique/tecla/toque (com um aviso discreto).
+      (function () {
+        var a = new Audio('./assets/audio/quebrada-royale.mp3');
+        a.loop = true;
+        a.preload = 'auto';
+        var vol = 0.8;
+        try {
+          var s = JSON.parse(localStorage.getItem('quebrada-royale.settings.v1') || '{}');
+          if (typeof s.volume === 'number') vol = Math.max(0, Math.min(1, s.volume));
+        } catch (e) {}
+        a.volume = vol * 0.6;
+        window.__qrTheme = a;
+        var hint = document.getElementById('loading-sound');
+        var evs = ['pointerdown', 'keydown', 'touchstart'];
+        function onGesture() {
+          evs.forEach(function (e) { window.removeEventListener(e, onGesture, true); });
+          if (hint) hint.classList.add('hidden');
+          if (!a.dataset.stopped) a.play().catch(function () {});
+        }
+        a.play().catch(function () {
+          if (hint) hint.classList.remove('hidden');
+          evs.forEach(function (e) { window.addEventListener(e, onGesture, true); });
+        });
+      })();
+    </script>
 
     <div id="pause" class="overlay hidden">
       <div class="card">

@@ -1346,3 +1346,15 @@ body.jogando,
 body.jogando * {
   cursor: none !important;
 }
+
+/* Aviso de som na tela de carregamento (só quando o navegador bloqueia o som automático). */
+#loading-sound {
+  margin-top: 6px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #ffd21f;
+  animation: loading-sound-pulse 1.4s ease-in-out infinite;
+}
+@keyframes loading-sound-pulse {
+  50% { opacity: 0.45; }
+}

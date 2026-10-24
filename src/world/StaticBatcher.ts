@@ -6,6 +6,23 @@ const CHUNK = 48;
 /** Distância (m) da câmera ao centro do lote em que as árvores trocam para a versão leve. */
 const LOD_DISTANCE = 72;
 
+/**
+ * Detalhes pequenos e cheios de triângulos que somem de longe (por bloco de 48 m): do alto
+ * do morro da estátua a câmera via a cidade inteira e desenhava ~5,6 milhões de triângulos,
+ * 1,9 milhão só de esquadrias de alumínio. A essa distância eles já não aparecem (e a
+ * névoa cobre); de perto nada muda. Ordem: o primeiro padrão que casar com o material vale.
+ */
+const DETAIL_CULL: ReadonlyArray<[RegExp, number]> = [
+  [/^hq_aluminio/, 75],
+  [/^hq_(metal|borracha|plastico)/, 80],
+  [/^(rebar|pvc|trashBag|bagBlue|bagWhite|cardboard|bottle|sack|plasticBlue|plasticRed|plasticYellow|gasRed|rust)$/, 75],
+  [/^rubberBurnt$/, 95],
+  [/^hq_(madeira|portao)/, 95],
+  [/^(metal|metalDark|rubber|cloth_\d+|product_\d+)$/, 95],
+  [/^hq_caixa/, 120],
+  [/_body$|^veiculo_/, 130],
+];
+
 export interface BatchOptions {
   /** Nível de detalhe: 0 = perto, 1 = longe (troca em LOD_DISTANCE). */
   lod?: 0 | 1;
@@ -71,8 +88,15 @@ export class StaticBatcher {
     // Liga perto → longe. Sem par de longe (material que a versão leve não usa), o lote
     // de perto simplesmente some além da distância.
     for (const [key, near] of byKey) {
-      if (!key.startsWith('lod0|')) continue;
-      near.addLODLevel(LOD_DISTANCE, byKey.get(`lod1|${key.slice(5)}`) ?? null);
+      if (key.startsWith('lod0|')) {
+        near.addLODLevel(LOD_DISTANCE, byKey.get(`lod1|${key.slice(5)}`) ?? null);
+        continue;
+      }
+      // Detalhe pequeno: some além da distância (peças grandes, "big", ficam sempre).
+      if (key.startsWith('lod1|') || key.endsWith(':big')) continue;
+      const name = near.material?.name ?? '';
+      const cull = DETAIL_CULL.find(([re]) => re.test(name));
+      if (cull) near.addLODLevel(cull[1], null);
     }
     this.groups.clear();
   }

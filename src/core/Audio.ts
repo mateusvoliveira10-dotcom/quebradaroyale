@@ -20,6 +20,8 @@ export class GameAudio {
   /** Multiplicador temporário (sons distantes). */
   private mul = 1;
   private masterVolume = 0.55;
+  /** Entrada do eco de rua (reverb curto gerado): só os tiros mandam som para ele. */
+  private reverb: GainNode | null = null;
 
   unlock(): void {
     if (this.ctx) {
@@ -41,6 +43,26 @@ export class GameAudio {
       this.ctx = ctx;
       this.master = master;
       this.noise = buf;
+      // Eco de rua: resposta de ~1,4 s com reflexões nas paredes (ruído com decaimento e
+      // alguns "tapas" nos primeiros 120 ms), estéreo.
+      const len = Math.floor(ctx.sampleRate * 1.4);
+      const ir = ctx.createBuffer(2, len, ctx.sampleRate);
+      for (let ch = 0; ch < 2; ch++) {
+        const d = ir.getChannelData(ch);
+        for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.2) * 0.6;
+        for (const ms of [18, 41, 67, 95, 118]) {
+          const at = Math.floor((ms + ch * 7) * ctx.sampleRate / 1000);
+          for (let k = 0; k < 90; k++) d[at + k] += (Math.random() * 2 - 1) * 0.9 * (1 - k / 90);
+        }
+      }
+      const conv = ctx.createConvolver();
+      conv.buffer = ir;
+      const wet = ctx.createGain();
+      wet.gain.value = 0.55;
+      conv.connect(wet).connect(master);
+      const send = ctx.createGain();
+      send.connect(conv);
+      this.reverb = send;
       this.createLoops();
     } catch {
       this.ctx = null;
@@ -49,7 +71,7 @@ export class GameAudio {
 
   // ------------------------------------------------------------ utilitários
 
-  private noiseBurst(dur: number, vol: number, filterType: BiquadFilterType, freq: number, q = 1, delay = 0, decay = 0.9): void {
+  private noiseBurst(dur: number, vol: number, filterType: BiquadFilterType, freq: number, q = 1, delay = 0, decay = 0.9, send = 0, sweep = 0.25): void {
     const { ctx, master, noise } = this;
     if (!ctx || !master || !noise) return;
     const t = ctx.currentTime + delay;
@@ -59,17 +81,22 @@ export class GameAudio {
     const f = ctx.createBiquadFilter();
     f.type = filterType;
     f.frequency.setValueAtTime(freq, t);
-    f.frequency.exponentialRampToValueAtTime(Math.max(60, freq * 0.25), t + dur);
+    f.frequency.exponentialRampToValueAtTime(Math.max(60, freq * sweep), t + dur);
     f.Q.value = q;
     const g = ctx.createGain();
     g.gain.setValueAtTime(Math.max(0.0002, vol * this.mul), t);
     g.gain.exponentialRampToValueAtTime(0.001, t + dur * decay + 0.01);
     src.connect(f).connect(g).connect(master);
+    if (send > 0 && this.reverb) {
+      const s = ctx.createGain();
+      s.gain.value = send;
+      g.connect(s).connect(this.reverb);
+    }
     src.start(t, Math.random() * 0.5);
     src.stop(t + dur + 0.05);
   }
 
-  private tone(freq: number, dur: number, vol: number, type: OscillatorType = 'sine', delay = 0, endFreq?: number): void {
+  private tone(freq: number, dur: number, vol: number, type: OscillatorType = 'sine', delay = 0, endFreq?: number, send = 0): void {
     const { ctx, master } = this;
     if (!ctx || !master) return;
     const t = ctx.currentTime + delay;
@@ -82,6 +109,11 @@ export class GameAudio {
     g.gain.exponentialRampToValueAtTime(Math.max(0.0002, vol * this.mul), t + 0.008);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     o.connect(g).connect(master);
+    if (send > 0 && this.reverb) {
+      const s = ctx.createGain();
+      s.gain.value = send;
+      g.connect(s).connect(this.reverb);
+    }
     o.start(t);
     o.stop(t + dur + 0.05);
   }
@@ -100,29 +132,65 @@ export class GameAudio {
     this.mul = 1;
   }
 
+  /**
+   * Tiro em camadas: estalo (ruído agudo de poucos ms), corpo (ruído filtrado com o "timbre"
+   * da arma), soco grave (seno com queda de afinação), mecânica e o eco de rua (reverb).
+   * Pequena variação de afinação a cada disparo para não soar repetido.
+   */
+  private gunshot(o: {
+    crack: number;
+    body: [freq: number, q: number, dur: number, vol: number];
+    body2?: [freq: number, q: number, dur: number, vol: number];
+    thump: [f0: number, f1: number, dur: number, vol: number];
+    tail: number;
+  }): void {
+    const v = 0.9 + Math.random() * 0.2;
+    this.noiseBurst(0.035, o.crack, 'highpass', 3200 * v, 0.7, 0, 0.6, o.tail * 0.6, 0.6);
+    const [bf, bq, bd, bv] = o.body;
+    this.noiseBurst(bd, bv, 'bandpass', bf * v, bq, 0, 0.85, o.tail);
+    this.noiseBurst(bd * 0.6, bv * 0.7, 'lowpass', bf * 2.4 * v, 0.6, 0.004, 0.7, o.tail * 0.5);
+    if (o.body2) {
+      const [f2, q2, d2, v2] = o.body2;
+      this.noiseBurst(d2, v2, 'bandpass', f2 * v, q2, 0.01, 0.9, o.tail);
+    }
+    const [t0, t1, td, tv] = o.thump;
+    this.tone(t0 * v, td, tv, 'sine', 0, t1, o.tail * 0.4);
+    this.tone(t0 * 1.9 * v, td * 0.5, tv * 0.35, 'triangle', 0, t1 * 1.5);
+  }
+
+  /** Clique metálico (mecanismo, ferrolho, pump). */
+  private clack(delay: number, vol: number, freq = 2600): void {
+    // Tiro distante (bot longe): o mecanismo nem chega a ser ouvido.
+    if (this.mul < 0.2) return;
+    this.noiseBurst(0.045, vol, 'bandpass', freq, 6, delay, 0.5, 0, 0.8);
+    this.tone(freq * 0.55, 0.03, vol * 0.4, 'square', delay + 0.005, freq * 0.4);
+  }
+
   private shotInner(kind: SoundKind): void {
     switch (kind) {
       case 'pistol':
-        this.noiseBurst(0.22, 0.9, 'lowpass', 4200, 0.8);
-        this.tone(180, 0.12, 0.5, 'triangle', 0, 60);
+        this.gunshot({ crack: 0.55, body: [1500, 0.9, 0.2, 0.75], thump: [160, 55, 0.13, 0.55], tail: 0.35 });
+        this.clack(0.05, 0.12, 3200);
         break;
       case 'smg':
-        this.noiseBurst(0.13, 0.65, 'lowpass', 5200, 0.8);
-        this.tone(220, 0.07, 0.35, 'triangle', 0, 80);
+        this.gunshot({ crack: 0.42, body: [1900, 1.0, 0.11, 0.55], thump: [190, 70, 0.07, 0.38], tail: 0.22 });
+        this.clack(0.03, 0.06, 3600);
         break;
       case 'shotgun':
-        this.noiseBurst(0.55, 1.0, 'lowpass', 2600, 0.6);
-        this.tone(90, 0.3, 0.8, 'sine', 0, 40);
-        this.noiseBurst(0.2, 0.3, 'bandpass', 900, 2, 0.32);
+        this.gunshot({ crack: 0.75, body: [900, 0.6, 0.5, 0.95], body2: [420, 0.8, 0.4, 0.5], thump: [95, 32, 0.36, 0.95], tail: 0.6 });
+        // Pump: vai e volta.
+        this.clack(0.42, 0.22, 1800);
+        this.clack(0.58, 0.25, 2200);
         break;
       case 'rifle':
-        this.noiseBurst(0.28, 0.85, 'lowpass', 3800, 0.7);
-        this.tone(140, 0.14, 0.55, 'triangle', 0, 50);
+        this.gunshot({ crack: 0.62, body: [1150, 0.85, 0.25, 0.8], thump: [125, 45, 0.16, 0.65], tail: 0.45 });
+        this.clack(0.04, 0.07, 3000);
         break;
       case 'sniper':
-        this.noiseBurst(0.9, 1.0, 'lowpass', 3000, 0.6);
-        this.tone(70, 0.5, 0.9, 'sine', 0, 30);
-        this.noiseBurst(0.6, 0.25, 'bandpass', 600, 1, 0.15, 1);
+        this.gunshot({ crack: 1.0, body: [800, 0.6, 0.85, 1.0], body2: [300, 0.7, 0.6, 0.5], thump: [72, 26, 0.55, 1.0], tail: 0.9 });
+        // Ferrolho: abre e fecha.
+        this.clack(0.65, 0.2, 2000);
+        this.clack(0.82, 0.24, 2600);
         break;
     }
   }

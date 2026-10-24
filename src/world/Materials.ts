@@ -64,6 +64,13 @@ export class Materials {
   readonly plasticYellow: StandardMaterial;
   readonly plasticBlue: StandardMaterial;
   readonly trashBag: StandardMaterial;
+  /** Sacos de lixo azul e branco, papelão, garrafa, pneu queimado e saco de areia (favela.glb). */
+  readonly bagBlue: StandardMaterial;
+  readonly bagWhite: StandardMaterial;
+  readonly cardboard: StandardMaterial;
+  readonly bottle: StandardMaterial;
+  readonly rubberBurnt: StandardMaterial;
+  readonly sack: StandardMaterial;
   readonly lampOff: StandardMaterial;
   readonly headlight: StandardMaterial;
   readonly taillight: StandardMaterial;
@@ -179,7 +186,16 @@ export class Materials {
     this.plasticRed = this.make('plasticRed', '#d8312c', { spec: 0.35 });
     this.plasticYellow = this.make('plasticYellow', '#f4c21d', { spec: 0.35 });
     this.plasticBlue = this.make('plasticBlue', '#2a64c8', { spec: 0.35 });
-    this.trashBag = this.make('trashBag', '#222428', { spec: 0.8, power: 50 });
+    // Plástico de saco de lixo: escuro, com reflexo forte e "brilho de borda" (fresnel).
+    this.trashBag = this.make('trashBag', '#16171b', { spec: 0.9, power: 70, emissive: 0.02 });
+    this.trashBag.emissiveColor = Color3.White();
+    this.trashBag.emissiveFresnelParameters = new FresnelParameters({ leftColor: new Color3(0.16, 0.17, 0.2), rightColor: new Color3(0.01, 0.01, 0.012), bias: 0.08, power: 2.4 });
+    this.bagBlue = this.make('bagBlue', '#1f4fb8', { spec: 0.8, power: 60 });
+    this.bagWhite = this.make('bagWhite', '#d9dad6', { spec: 0.6, power: 40 });
+    this.cardboard = this.make('cardboard', '#a07646', { tex: noiseTex });
+    this.bottle = this.make('bottle', '#2a6b34', { spec: 1, power: 90, emissive: 0.15 });
+    this.rubberBurnt = this.make('rubberBurnt', '#2a2622', { spec: 0.05, tex: noiseTex });
+    this.sack = this.make('sack', '#bfae86', { tex: noiseTex });
     this.lampOff = this.make('lampOff', '#f2efe0', { emissive: 0.35 });
     this.headlight = this.make('headlight', '#fff6d8', { emissive: 0.6, spec: 1 });
     this.taillight = this.make('taillight', '#c4211e', { emissive: 0.4, spec: 1 });

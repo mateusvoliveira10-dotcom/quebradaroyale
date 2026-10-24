@@ -89,6 +89,28 @@ Blender, centenas de MB) e `backups/` não vão para o repositório.
 | `Esc`                  | Pausa (continuar, reiniciar, voltar ao lobby)     |
 | `H` / `F3`             | Ajuda / painel de depuração                       |
 
+## Favela do morro, lixo, barricadas, armas e desempenho
+
+- **Morro da estátua cheio:** fileiras de casas no platô 2 em volta do cume (antes da escadaria,
+  a oeste e a leste), com becos e loot (`buildFavelaDoMorro` em `builders/Morro.ts`). Os
+  caminhos das escadarias e a caixa d'água comunitária ficam livres.
+- **Lixo, pneus e barricadas** (`tools/blender/favela_props.py` → `favela.glb`, 341 KB): sacos
+  amarrados e amassados (pretos com brilho de plástico, azuis e brancos), papelão e garrafa no
+  lugar das esferas; pneus soltos, pilhas de pneus, barricadas de pneus com tambor enferrujado e
+  de paletes com blocos de concreto, espalhados em terreno livre (`scatterVegetation`).
+- **Armas novas** (`tools/blender/weapons.py` → `weapons.glb`, 240 KB): pistola, submetralhadora,
+  escopeta pump, fuzil com trilho e mira holográfica, rifle de ferrolho com luneta. Mesmas medidas
+  das antigas (as mãos encaixam igual) e uma malha por material (4–6 por arma, antes 8–10 peças).
+- **Sons dos tiros** em camadas (`Audio.ts`): estalo, corpo com timbre de cada arma, soco
+  grave, mecânica (pump, ferrolho) e eco de rua por reverb gerado no jogo.
+- **Música desde a logo:** o `index.html` começa a tocar antes do jogo baixar; se o navegador
+  bloquear som antes de interação, aparece "Clique ou aperte uma tecla para ligar o som".
+- **Travamento perto da estátua:** do alto do morro a câmera via a cidade inteira (5,6 milhões de
+  triângulos, 1,9 milhão só de esquadrias). Detalhes pequenos (esquadrias, grades, madeira,
+  portões, caixas d'água, lixo, carros) agora somem além de 75–130 m por bloco
+  (`DETAIL_CULL` em `StaticBatcher.ts`), e as armas do chão aparecem até 70 m: a vista do cume
+  caiu de 113 para 42 ms por quadro neste computador.
+
 ## Lobby e entrada no mapa
 
 - **Lobby "boteco de laje"** (`src/world/builders/LobbyScene.ts`, usado por `src/modes/LobbyMode.ts`):

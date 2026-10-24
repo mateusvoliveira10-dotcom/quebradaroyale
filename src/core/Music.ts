@@ -27,15 +27,25 @@ class ThemeMusic {
   private waitingGesture = false;
 
   constructor() {
-    this.el = new Audio(`${import.meta.env.BASE_URL}assets/audio/quebrada-royale.mp3`);
-    this.el.loop = true;
-    this.el.preload = 'auto';
-    this.el.volume = 0;
+    // O index.html já começou a tocar na logo: assume o mesmo áudio sem cortar nem baixar
+    // o volume (nada de silêncio entre a logo e o lobby).
+    const early = (window as unknown as { __qrTheme?: HTMLAudioElement }).__qrTheme;
+    if (early) {
+      this.el = early;
+      this.level = 1;
+      this.wanted = true;
+    } else {
+      this.el = new Audio(`${import.meta.env.BASE_URL}assets/audio/quebrada-royale.mp3`);
+      this.el.loop = true;
+      this.el.preload = 'auto';
+      this.el.volume = 0;
+    }
   }
 
   /** Abertura e lobby: começa (ou volta) com fade-in. */
   play(): void {
     this.wanted = true;
+    delete this.el.dataset.stopped;
     this.fade(1, FADE_IN);
     this.el.play().catch(() => this.waitForGesture());
   }
@@ -43,6 +53,8 @@ class ThemeMusic {
   /** Partida: fade-out e pausa (guarda a posição). */
   stop(): void {
     this.wanted = false;
+    // O aviso/ouvinte do index.html não deve religar a música depois de parada.
+    this.el.dataset.stopped = '1';
     this.fade(0, FADE_OUT);
   }
 

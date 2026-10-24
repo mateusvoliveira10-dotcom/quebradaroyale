@@ -47,6 +47,16 @@ function roleMaterial(m: Materials): (role: string) => Material {
     wood: m.wood,
     refl_r: m.plasticRed,
     refl_w: m.white,
+    // favela.glb
+    bag_black: m.trashBag,
+    bag_blue: m.bagBlue,
+    bag_white: m.bagWhite,
+    cardboard: m.cardboard,
+    bottle: m.bottle,
+    rubber: m.rubber,
+    rubber_burnt: m.rubberBurnt,
+    concrete: m.concrete,
+    sack: m.sack,
   };
   return (role) => map[role] ?? m.foliage;
 }
@@ -72,6 +82,14 @@ export function placeCacamba(b: WorldBuilder, x: number, z: number, ry: number):
   b.model(model, x, 0, z, ry, roleMaterial(b.mats));
   const along = Math.abs(Math.cos(ry)) > 0.5;
   b.contactShadow(x, z, along ? 3.1 : 1.7, along ? 1.7 : 3.1, 0, 0.5);
+  return true;
+}
+
+/** Prop de favela.glb (lixo, pneus, barricadas) girado em ry. false = modelo não carregado. */
+export function placeProp(b: WorldBuilder, name: string, x: number, y: number, z: number, ry: number, scale = 1): boolean {
+  const model = prop(name);
+  if (!model) return false;
+  b.model(model, x, y, z, ry, roleMaterial(b.mats), { scale });
   return true;
 }
 
@@ -120,6 +138,19 @@ class Obstacles {
           if (!list) this.grid.set(key, (list = []));
           list.push(box);
         }
+      }
+    }
+  }
+
+  /** Marca um retângulo como ocupado (para o mato não nascer dentro do que acabou de ser posto). */
+  reserve(x: number, z: number, rx: number, rz: number, y0: number, y1: number): void {
+    const box: Box = { x0: x - rx, x1: x + rx, y0, y1, z0: z - rz, z1: z + rz };
+    for (let i = Math.floor(box.x0 / CELL); i <= Math.floor(box.x1 / CELL); i++) {
+      for (let k = Math.floor(box.z0 / CELL); k <= Math.floor(box.z1 / CELL); k++) {
+        const key = `${i},${k}`;
+        let list = this.grid.get(key);
+        if (!list) this.grid.set(key, (list = []));
+        list.push(box);
       }
     }
   }
@@ -220,6 +251,36 @@ export function scatterVegetation(b: WorldBuilder, o: ScatterOptions): void {
     if (Math.abs(x) > lim - 4 || nearLoot(x, z, 3) || !obstacles.free(x, z, 1.9, 1.0, 0.05, 1.5)) continue;
     placeCacamba(b, x, z, 0);
     cacambas++;
+  }
+
+  // Cara de favela: pneus soltos e empilhados, barricadas de pneu e de paletes, montes de
+  // lixo. Só em terreno livre (terrenos baldios, platôs, beira do muro), nunca em rua,
+  // calçada, beco ou em cima do loot; cada um reserva o espaço que ocupa.
+  const favela: Array<[string, number, number, number]> = [
+    // nome, quantidade, meia-largura do espaço livre, altura
+    ['BarricadaPneus', 10, 1.7, 1.0],
+    ['BarricadaMadeira', 8, 1.6, 1.3],
+    ['PilhaPneus', 16, 0.5, 0.9],
+    ['Pneu', 28, 0.4, 0.3],
+    ['Lixo_a', 10, 0.8, 0.8],
+    ['Lixo_b', 10, 0.8, 0.8],
+    ['Lixo_c', 10, 0.9, 0.8],
+  ];
+  for (const [name, count, half, height] of favela) {
+    if (!prop(name)) continue;
+    let placed = 0;
+    for (let tries = 0; tries < count * 120 && placed < count; tries++) {
+      const x = rng.range(-lim, lim);
+      const z = rng.range(-lim, lim);
+      const gy = ground(x, z);
+      if (blocked(x, z, half * 0.6) || nearEdge(x, z, half + 0.5) || nearLoot(x, z, half + 1.2)) continue;
+      // Gente consegue passar em volta: exige uma folga de 1,2 m além do próprio objeto.
+      if (!obstacles.free(x, z, half + 1.2, half + 1.2, gy + 0.05, gy + 2.2)) continue;
+      const ry = rng.range(0, Math.PI * 2);
+      placeProp(b, name, x, gy, z, ry, rng.range(0.92, 1.08));
+      obstacles.reserve(x, z, half, half, gy, gy + height);
+      placed++;
+    }
   }
 
   // Mato e capim: um tufo repetido por thin instances.

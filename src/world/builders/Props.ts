@@ -4,7 +4,7 @@ import { Rng } from '../../utils/random';
 import { GRAFFITI_TILES } from '../Materials';
 import { CarModelId, DetailedVehicleId, WorldAssets } from '../WorldAssets';
 import { WorldBuilder } from '../WorldBuilder';
-import { pickSpecies, placeCacamba, placeTree, TreeSpecies } from './Vegetation';
+import { pickSpecies, placeCacamba, placeProp, placeTree, TreeSpecies } from './Vegetation';
 
 type Ctx = CanvasRenderingContext2D;
 
@@ -407,8 +407,19 @@ export function addDumpster(b: WorldBuilder, rng: Rng, x: number, z: number, ry:
   b.contactShadow(x, z, Math.abs(Math.cos(ry)) > 0.5 ? 3.0 : 1.6, Math.abs(Math.cos(ry)) > 0.5 ? 1.6 : 3.0, 0, 0.5);
 }
 
-/** Sacos de lixo amontoados. */
+/**
+ * Monte de sacos de lixo (modelo 3D de `favela_props.py`: sacos amarrados e amassados,
+ * papelão, garrafa). Consome os mesmos sorteios do monte antigo de esferas, que continua
+ * como reserva sem o modelo.
+ */
 export function addTrashPile(b: WorldBuilder, rng: Rng, x: number, y: number, z: number): void {
+  if (WorldAssets.current?.props.has('Lixo_a')) {
+    const n = rng.int(3, 6);
+    for (let i = 0; i < n * 7; i++) rng.next();
+    const r = spotRng(x, z, 21);
+    placeProp(b, r.pick(['Lixo_a', 'Lixo_b', 'Lixo_c']), x, y, z, r.range(0, Math.PI * 2), r.range(0.85, 1.1));
+    return;
+  }
   const n = rng.int(3, 6);
   for (let i = 0; i < n; i++) {
     const s = MeshBuilder.CreateSphere('trash', { diameter: rng.range(0.45, 0.7), segments: 8 }, b.scene);

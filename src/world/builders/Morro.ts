@@ -88,6 +88,8 @@ export function buildMorro(b: WorldBuilder, rng: Rng, start: number, limit: numb
   // Gerador próprio: não altera a sequência do resto do mapa.
   const summit = buildSummit(b, new Rng(4242), t2, h2);
   for (const p of summit.lootSpots) lootSpots.push(p);
+  // Favela subindo o morro até a estátua (gerador próprio: o resto do mapa não muda).
+  buildFavelaDoMorro(b, new Rng(6161), t2, h2, summit.rect, houses, lootSpots);
 
   // Árvores e loot nos platôs.
   // Na beira do platô 1 as casas ficam perto: só espécies de copa estreita.
@@ -144,6 +146,30 @@ function buildSummit(b: WorldBuilder, rng: Rng, t2: Rect, base: number): { rect:
   lootSpots.push(new Vector3(cx + 14, SUMMIT_TOP + 0.05, t3.z0 + 3));
   lootSpots.push(new Vector3(cx - 14, SUMMIT_TOP + 0.05, t3.z1 - 4));
   return { rect: t3, lootSpots };
+}
+
+/**
+ * Casas no platô 2 em volta do cume: duas fileiras entre as casas de baixo e a escadaria do
+ * cume, e blocos a oeste e a leste do cume, com becos entre as fileiras. Ficam livres o
+ * corredor da escadaria do cume, o caminho da escadaria do platô 1 (lado leste) e a caixa
+ * d'água comunitária.
+ */
+function buildFavelaDoMorro(b: WorldBuilder, rng: Rng, t2: Rect, base: number, t3: Rect, out: HouseInfo[], loot: Vector3[]): void {
+  const cx = (t3.x0 + t3.x1) / 2;
+  const stair: [number, number] = [cx - 3, cx + 3];
+  const east = t2.x1 - 11; // até aqui; daí para o leste fica o caminho de quem sobe do platô 1
+  // Faixa de baixo (duas fileiras), antes da escadaria do cume.
+  for (const [z0, depth] of [[t2.z0 + 14.5, 7.2], [t2.z0 + 25, 6.4]] as const) {
+    fillRow(b, rng, out, { x0: t2.x0 + 0.8, x1: east, z0, z1: z0 + depth }, base, [stair]);
+    loot.push(new Vector3(rng.range(t2.x0 + 10, east - 6), base + 0.05, z0 - 1.6));
+  }
+  // Blocos dos lados do cume, fileira por fileira, com becos de ~4 m.
+  for (let z0 = t3.z0 - 6; z0 + 7 < t2.z1 - 1; z0 += 11) {
+    fillRow(b, rng, out, { x0: t2.x0 + 0.8, x1: t3.x0 - 2.2, z0, z1: z0 + 7 }, base, []);
+    // A leste para antes da caixa d'água comunitária.
+    if (z0 + 7 < t2.z1 - 10) fillRow(b, rng, out, { x0: t3.x1 + 2.2, x1: east, z0, z1: z0 + 7 }, base, []);
+    if (rng.chance(0.6)) loot.push(new Vector3(rng.range(t2.x0 + 4, t3.x0 - 6), base + 0.05, z0 - 2));
+  }
 }
 
 /** Platô: maciço com muro de arrimo de pedra e topo de terra/cimento. */

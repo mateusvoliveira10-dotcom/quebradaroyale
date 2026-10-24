@@ -1,4 +1,5 @@
 import { Color3, Mesh, MeshBuilder, Scene, StandardMaterial, TransformNode, Vector3 } from '@babylonjs/core';
+import { WorldAssets } from '../world/WorldAssets';
 import { RARITIES, WeaponId } from './WeaponDefs';
 
 export interface WeaponModel {
@@ -14,6 +15,8 @@ interface GunMats {
   polymer: StandardMaterial;
   wood: StandardMaterial;
   steel: StandardMaterial;
+  lens: StandardMaterial;
+  rubber: StandardMaterial;
   rarity: StandardMaterial[];
 }
 
@@ -35,6 +38,8 @@ function mats(scene: Scene): GunMats {
     polymer: mk('gun_polymer', '#1b1c20', 0.25, 24),
     wood: mk('gun_wood', '#8a5530', 0.3, 32),
     steel: mk('gun_steel', '#8d949c', 1.0, 90),
+    lens: mk('gun_lens', '#2f6d8c', 1.0, 140, 0.3),
+    rubber: mk('gun_rubber', '#141416', 0.08, 12),
     rarity: RARITIES.map((r, i) => mk(`gun_rarity_${i}`, r.color, 0.5, 40, 0.6)),
   };
   return cache;
@@ -44,7 +49,44 @@ function mats(scene: Scene): GunMats {
  * Armas estilizadas montadas com primitivas. Origem no punho, cano apontando
  * para +Z (o personagem segura pela origem).
  */
+/** Onde sai o tiro (relativo ao punho), igual para o modelo novo e o antigo. */
+const MUZZLE: Record<WeaponId, [number, number]> = {
+  pistola: [0.055, 0.18],
+  smg: [0.05, 0.39],
+  escopeta: [0.065, 0.8],
+  fuzil: [0.05, 0.78],
+  sniper: [0.05, 0.92],
+};
+
+/**
+ * Arma do GLB (`tools/blender/weapons.py`): uma malha por material, clonada da base (a
+ * geometria é compartilhada entre todas as cópias). Mesma origem e medidas das antigas.
+ */
+function buildFromAsset(scene: Scene, id: WeaponId, rarity: number): WeaponModel | null {
+  const model = WorldAssets.current?.props.get(`Arma_${id}`);
+  if (!model) return null;
+  const g = mats(scene);
+  const root = new TransformNode(`weapon_${id}`, scene);
+  const meshes: Mesh[] = [];
+  const accents: Mesh[] = [];
+  const byRole: Record<string, StandardMaterial> = { metal: g.metal, polymer: g.polymer, wood: g.wood, steel: g.steel, lens: g.lens, rubber: g.rubber, accent: g.rarity[rarity] };
+  for (const [role, base] of model.parts) {
+    const m = base.clone(`gun_${id}_${role}`, root, true);
+    m.setEnabled(true);
+    m.material = byRole[role] ?? g.metal;
+    m.isPickable = false;
+    meshes.push(m);
+    if (role === 'accent') accents.push(m);
+  }
+  const muzzle = new TransformNode('muzzle', scene);
+  muzzle.parent = root;
+  muzzle.position = new Vector3(0, MUZZLE[id][0], MUZZLE[id][1]);
+  return { root, muzzle, meshes, accents };
+}
+
 export function buildWeaponModel(scene: Scene, id: WeaponId, rarity: number): WeaponModel {
+  const fromAsset = buildFromAsset(scene, id, rarity);
+  if (fromAsset) return fromAsset;
   const g = mats(scene);
   const root = new TransformNode(`weapon_${id}`, scene);
   const meshes: Mesh[] = [];
