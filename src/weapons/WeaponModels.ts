@@ -8,6 +8,8 @@ export interface WeaponModel {
   meshes: Mesh[];
   /** Detalhes na cor da raridade (brilham no chão). */
   accents: Mesh[];
+  /** Onde a mão esquerda apoia (espaço da arma); sem isto vale o padrão do tipo de arma. */
+  supportGrip?: Vector3;
 }
 
 interface GunMats {
@@ -92,6 +94,18 @@ const PACK: Partial<Record<WeaponId, (rarity: number) => string>> = {
   pistola: () => 'GP_pistola',
   smg: (r) => `GP_smg_${Math.max(0, Math.min(4, r))}`,
 };
+/**
+ * Mão de apoio de cada arma do pacote: nas compactas (Uzi, MAC) ela envolve a outra mão, como
+ * numa pistola; nas outras vai ao carregador, ao tambor ou à alça da frente.
+ */
+const PACK_SUPPORT: Record<string, Vector3> = {
+  GP_pistola: new Vector3(-0.035, -0.035, 0.01),
+  GP_smg_0: new Vector3(-0.035, -0.04, 0.012),
+  GP_smg_1: new Vector3(-0.035, -0.045, 0.015),
+  GP_smg_2: new Vector3(-0.035, -0.075, 0.15),
+  GP_smg_3: new Vector3(-0.045, -0.04, 0.2),
+  GP_smg_4: new Vector3(-0.04, -0.05, 0.16),
+};
 const PACK_MUZZLE: Record<string, [number, number]> = {
   GP_pistola: [0.055, 0.25],
   GP_smg_0: [0.026, 0.175],
@@ -112,7 +126,7 @@ function buildFromPack(scene: Scene, id: WeaponId, rarity: number): WeaponModel 
   const muzzle = new TransformNode('muzzle', scene);
   muzzle.parent = root;
   muzzle.position = new Vector3(0, PACK_MUZZLE[key][0], PACK_MUZZLE[key][1]);
-  return { root, muzzle, meshes: [mesh], accents: [] };
+  return { root, muzzle, meshes: [mesh], accents: [], supportGrip: PACK_SUPPORT[key] };
 }
 
 export function buildWeaponModel(scene: Scene, id: WeaponId, rarity: number): WeaponModel {

@@ -208,7 +208,8 @@ export class WeaponSystem {
         root.parent = model.weaponMount;
         root.position.set(0, 0, 0);
         root.rotation.set(0, 0, 0);
-        model.setSupportGrip(SUPPORT_GRIP[inst.def.id]);
+        // Modelos com apoio próprio (armas do pacote, cada uma com o carregador num lugar).
+        model.setSupportGrip(inst.model.supportGrip ?? SUPPORT_GRIP[inst.def.id]);
       } else {
         root.parent = model.backMount;
         root.position.set(0, 0, 0);
