@@ -184,7 +184,9 @@ export class DropSequence {
           r.chuteAnim = Math.min(1, r.chuteAnim + dt * 1.1);
           const up = easeOutBack(clamp(r.chuteAnim / 0.45, 0, 1));
           const wide = easeOutBack(clamp((r.chuteAnim - 0.25) / 0.75, 0, 1));
-          chute.scaling.set(0.12 + 0.88 * wide, 0.1 + 0.9 * up, 0.35 + 0.65 * wide);
+          // Tecido tremulando no vento (leve, mais forte logo depois de abrir).
+          const flap = (Math.sin(this.travelled * 0.9 + r.jumpAt * 17) * 0.012 + Math.sin(this.travelled * 2.3) * 0.006) * (1 + (1 - r.chuteAnim) * 3);
+          chute.scaling.set((0.12 + 0.88 * wide) * (1 + flap), 0.1 + 0.9 * up, (0.35 + 0.65 * wide) * (1 - flap));
           chute.position.y = CHUTE_ANCHOR_Y;
           // Balança com as curvas e com o vento (o velame fica para fora da curva).
           const right = new Vector3(Math.cos(ctrl.facingYaw), 0, -Math.sin(ctrl.facingYaw));

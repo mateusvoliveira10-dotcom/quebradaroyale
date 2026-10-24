@@ -87,6 +87,25 @@ Blender, centenas de MB) e `backups/` não vão para o repositório.
 | `Esc`                  | Pausa (continuar, reiniciar, voltar ao lobby)     |
 | `H` / `F3`             | Ajuda / painel de depuração                       |
 
+## Lobby e entrada no mapa
+
+- **Lobby "boteco de laje"** (`src/world/builders/LobbyScene.ts`, usado por `src/modes/LobbyMode.ts`):
+  mesa quadrada vermelha de bar com cadeiras dobráveis, garrafas e copos, guarda-sol listrado
+  balançando, engradados e isopor, churrasqueira de tijolo com brasa e fumaça, caixa de som com
+  os alto-falantes pulsando e LED mudando de cor, gambiarra de lâmpadas (algumas piscando),
+  bandeirinhas e roupas no varal ao vento, muro grafitado "QUEBRADA", vasos de planta, pipas com
+  rabiola e um bando de pássaros sobre o morro, e poeira dourada no ar. Só o personagem do jogador
+  (sem pódio nem anel). A câmera entra num arco de aproximação de 2,6 s e depois orbita devagar.
+  As peças paradas são juntadas por material (~18 malhas), então o lobby custa ~8% a mais que antes.
+- **Queda** (`src/match/DropFx.ts`, ligado em `BattleRoyaleMode.ts`): na queda livre a câmera
+  recua e abre o campo de visão com a velocidade e treme no mergulho; rastro de fumaça verde e
+  amarela; traços de vento; braços e pernas sacudindo no ar (`CharacterModel.applyAirPose`). Na
+  abertura do paraquedas, tranco de câmera (FOV e tremor) e velame tremulando
+  (`DropSequence.ts`); com ele aberto a câmera vai para 11,5 m para ler o mapa. Marcador de pouso
+  no chão embaixo do personagem, placas dos pontos de interesse (Campinho, Boteco, Mercadinho,
+  Oficina, Mirante da Paz) vistas do alto e poeira ao pousar. Tudo só para o jogador e só durante
+  a descida: a partida em si não fica mais pesada.
+
 ## Mapa: estátua, carros e acabamento
 
 - **Estátua de braços abertos** no cume do morro (platô 3, a 10,5 m, com escadaria, mureta e loot ao

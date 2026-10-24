@@ -911,11 +911,14 @@ export class CharacterModel {
     const mix = (f: Vector3, p: Vector3) => f.scale(ff / Math.max(w, 1e-3)).add(p.scale(pc / Math.max(w, 1e-3)));
     for (const side of [1, -1]) {
       const L = side > 0 ? 'Left' : 'Right';
-      const hand = mix(new Vector3(side * 0.6, 1.66, 0.1), new Vector3(side * 0.26, 1.78, 0.04));
+      // O vento sacode braços e pernas na queda livre (pernas balançam alternadas no paraquedas).
+      const flutter = Math.sin(this.time * 13 + side * 1.3) * 0.035 * ff;
+      const swing = Math.sin(this.time * 2.1 + side * Math.PI) * 0.08 * pc;
+      const hand = mix(new Vector3(side * 0.6, 1.66 + flutter, 0.1 + flutter * 0.5), new Vector3(side * 0.26, 1.78, 0.04));
       const palm = n.get(side > 0 ? 'socket_weapon_L' : 'socket_weapon_R')!;
       const cur = this.relPos(palm, esqInv);
       this.twoBone(n.get(`${L}Arm`)!, n.get(`${L}ForeArm`)!, palm, Vector3.Lerp(cur, hand, w), esqInv);
-      const foot = mix(new Vector3(side * 0.26, 0.42, -0.42), new Vector3(side * 0.13, 0.1, 0.16));
+      const foot = mix(new Vector3(side * 0.26, 0.42 - flutter * 0.6, -0.42), new Vector3(side * 0.13, 0.1, 0.16 + swing));
       const footNode = n.get(`${L}Foot`);
       if (!footNode) continue;
       const curF = this.relPos(footNode, esqInv);

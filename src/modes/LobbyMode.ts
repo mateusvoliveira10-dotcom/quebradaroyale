@@ -1,5 +1,6 @@
-import { Color3, DynamicTexture, Mesh, MeshBuilder, StandardMaterial, Vector3 } from '@babylonjs/core';
+import { Mesh, MeshBuilder, StandardMaterial, Vector3 } from '@babylonjs/core';
 import type { Game } from '../core/Game';
+import { LobbyScene } from '../world/builders/LobbyScene';
 import { WORLD } from '../core/config';
 import { MAP_FENCE } from '../player/CharacterController';
 import { GameMode } from './GameMode';
@@ -13,20 +14,28 @@ import { GameMode } from './GameMode';
 const STAGE_H = 11;
 export const LOBBY_SPOT = new Vector3(-8, STAGE_H + 0.12, WORLD.half + 13);
 
+/** Entrada da câmera ao abrir o lobby (s). */
+const INTRO = 2.6;
+
 /**
- * Lobby 3D: o personagem do jogador (com a aparência salva) em pose idle num
- * pódio iluminado sobre a laje. As abas do menu mudam o enquadramento.
+ * Lobby 3D: o personagem do jogador (com a aparência salva) em pose idle no meio de
+ * um "boteco de laje" vivo (LobbyScene): mesa de bar, churrasqueira, som, gambiarra,
+ * bandeirinhas, varal e pipas (só o personagem do jogador; sem NPCs). A câmera entra num movimento de
+ * aproximação e depois orbita devagar; as abas do menu mudam o enquadramento.
  */
 export class LobbyMode implements GameMode {
   readonly kind = 'lobby' as const;
   restart = null;
   changeDifficulty = null;
   private readonly stage: Mesh[] = [];
+  private readonly scenery: LobbyScene;
   private yaw = 0;
   private time = 0;
+  private intro = 0;
 
   constructor(private readonly g: Game) {
     this.buildStage();
+    this.scenery = new LobbyScene(g.scene, g.world.mats, g.env.glow, LOBBY_SPOT);
   }
 
   /** Prédio com laje (pódio, mureta, caixa d'água, antena, varal) — só visual, sem colisão. */
@@ -67,35 +76,6 @@ export class LobbyMode implements GameMode {
     dish.rotation.x = -Math.PI / 2.4;
     add(dish, m.white);
 
-    // Pódio com anel de luz.
-    const base = MeshBuilder.CreateCylinder('podium', { diameter: 2.6, height: 0.16, tessellation: 48 }, scene);
-    base.position.copyFrom(s).addInPlace(new Vector3(0, -0.04, 0));
-    const baseMat = new StandardMaterial('podiumMat', scene);
-    baseMat.diffuseColor = Color3.FromHexString('#20283a');
-    baseMat.specularColor = new Color3(0.5, 0.5, 0.5);
-    add(base, baseMat);
-    const ringTex = new DynamicTexture('podiumRing', { width: 256, height: 256 }, scene, false);
-    const ctx = ringTex.getContext() as unknown as CanvasRenderingContext2D;
-    ctx.clearRect(0, 0, 256, 256);
-    const grad = ctx.createRadialGradient(128, 128, 60, 128, 128, 128);
-    grad.addColorStop(0, 'rgba(255,255,255,0.0)');
-    grad.addColorStop(0.75, 'rgba(255,255,255,0.9)');
-    grad.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 256, 256);
-    ringTex.update();
-    ringTex.hasAlpha = true;
-    const ringMat = new StandardMaterial('podiumRingMat', scene);
-    ringMat.emissiveColor = Color3.FromHexString('#ffcc33').scale(0.8);
-    ringMat.diffuseColor = Color3.Black();
-    ringMat.opacityTexture = ringTex;
-    ringMat.disableLighting = true;
-    ringMat.alpha = 0.55;
-    const ring = MeshBuilder.CreateDisc('podiumGlow', { radius: 1.6, tessellation: 48 }, scene);
-    ring.rotation.x = Math.PI / 2;
-    ring.position.copyFrom(s).addInPlace(new Vector3(0, 0.06, 0));
-    add(ring, ringMat).receiveShadows = false;
-
     for (const mesh of this.stage) mesh.setEnabled(false);
   }
 
@@ -117,14 +97,17 @@ export class LobbyMode implements GameMode {
     g.player.ctrl.spawnAt(LOBBY_SPOT.clone(), 0);
     g.player.ctrl.model.root.rotation.y = 0;
     for (const m of this.stage) m.setEnabled(true);
+    this.scenery.setEnabled(true);
     g.menu.show(true);
     g.camera.snap();
     this.yaw = 0;
+    this.intro = 0;
   }
 
   exit(): void {
     this.g.player.ctrl.fence = MAP_FENCE;
     for (const m of this.stage) m.setEnabled(false);
+    this.scenery.setEnabled(false);
     this.g.env.setLobbyFocus(null);
     this.g.menu.show(false);
   }
@@ -146,13 +129,18 @@ export class LobbyMode implements GameMode {
     const model = g.player.ctrl.model;
     model.root.rotation.y = this.yaw;
     model.animateLobby(dt);
+    this.scenery.update(dt);
 
-    // Câmera ao norte do personagem, olhando para o sul (para a comunidade).
+    // Câmera ao norte do personagem, olhando para o sul (para a comunidade). Ao entrar,
+    // vem de longe e de lado num arco suave (2,6 s); depois orbita devagar, "respirando".
+    this.intro = Math.min(INTRO, this.intro + dt);
+    const k = 1 - Math.pow(1 - this.intro / INTRO, 3);
     const cam = g.camera;
-    cam.camera.alpha = Math.PI / 2 + Math.sin(this.time * 0.15) * 0.06;
-    cam.camera.beta = custom ? 1.5 : 1.4;
+    const orbit = custom ? Math.sin(this.time * 0.15) * 0.05 : Math.sin(this.time * 0.11) * 0.2 + Math.sin(this.time * 0.27) * 0.04;
+    cam.camera.alpha = Math.PI / 2 + orbit + (1 - k) * 0.85;
+    cam.camera.beta = (custom ? 1.5 : 1.38 + Math.sin(this.time * 0.19) * 0.025) - (1 - k) * 0.28;
     const focus = LOBBY_SPOT.add(new Vector3(custom ? -0.75 : 0, 0, 0));
-    const dist = custom ? 3.0 : 4.7;
+    const dist = (custom ? 3.0 : 5.3) + (1 - k) * 7;
     cam.updateFollow(dt, focus, {
       height: custom ? 1.2 : 1.05,
       aiming: false,

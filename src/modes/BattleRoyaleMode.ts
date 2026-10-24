@@ -3,8 +3,10 @@ import { randomAppearance } from '../appearance/Appearance';
 import { KillEvent } from '../combat/CombatManager';
 import type { BotEntry, Game } from '../core/Game';
 import { DROP } from '../core/config';
+import { DropFx, DropPoi } from '../match/DropFx';
+import type { RiderPhase } from '../match/DropSequence';
 import { SafeZone } from '../match/SafeZone';
-import { Rng } from '../utils/random';
+import { clamp, Rng } from '../utils/random';
 import { GameMode } from './GameMode';
 
 /** Duração (s) da abertura cinematográfica em volta do avião. */
@@ -34,11 +36,36 @@ export class BattleRoyaleMode implements GameMode {
   private matchTime = 0;
   private placement = 0;
   private introT = 0;
+  private readonly fx: DropFx;
+  private lastPhase: RiderPhase = 'plane';
+  /** "Soco" de FOV na abertura do paraquedas (volta a 0 sozinho). */
+  private fovKick = 0;
   restart = () => this.g.startMode('br');
   changeDifficulty = null;
 
   constructor(private readonly g: Game) {
     this.zone = new SafeZone(g.scene, this.rng, g.map.half);
+    this.fx = new DropFx(g.scene);
+    this.fx.setPois(this.pois());
+  }
+
+  /** Pontos de interesse lidos do mapa, para as placas vistas do alto. */
+  private pois(): DropPoi[] {
+    const out: DropPoi[] = [];
+    const center = (f: { x0: number; x1: number; z0: number; z1: number }) => new Vector3((f.x0 + f.x1) / 2, 0, (f.z0 + f.z1) / 2);
+    for (const f of this.g.map.features) {
+      const c = center(f);
+      if (f.kind === 'shop') {
+        const name = c.x > 0 && c.z > 0 ? 'BOTECO' : c.x < 0 && c.z > 0 ? 'MERCADINHO' : c.x < 0 && c.z < 0 ? 'OFICINA' : 'COMÉRCIO';
+        out.push({ name, pos: c, color: '#ff8a1f' });
+      } else if (f.kind === 'field') {
+        out.push({ name: 'CAMPINHO', pos: c, color: '#2bd46b' });
+      }
+    }
+    // O último platô do morro é o cume com a estátua.
+    const summit = [...this.g.map.features].reverse().find((f) => f.kind === 'terrace');
+    if (summit) out.push({ name: 'MIRANTE DA PAZ', pos: center(summit).add(new Vector3(0, 20, 0)), color: '#25c4ff' });
+    return out;
   }
 
   focus(): Vector3 {
@@ -53,6 +80,8 @@ export class BattleRoyaleMode implements GameMode {
     this.matchTime = 0;
     this.zoneTick = 0;
     this.introT = 0;
+    this.lastPhase = 'plane';
+    this.fovKick = 0;
 
     g.hud.show(true);
     g.hud.configure('br');
@@ -104,6 +133,7 @@ export class BattleRoyaleMode implements GameMode {
   }
 
   exit(): void {
+    this.fx.stop();
     this.g.drop.end();
     this.zone.stop();
     this.g.loot.clear();
@@ -180,10 +210,41 @@ export class BattleRoyaleMode implements GameMode {
       }
       g.camera.updateFollow(dt, g.drop.planePosition, { height: 2, aiming: false, sprinting: false, distanceOverride: dist, centered: true, noCollision: true });
     } else if (playerPhase === 'freefall' || playerPhase === 'parachute') {
-      g.camera.updateFollow(dt, g.player.position, { height: 1.2, aiming: false, sprinting: false, distanceOverride: playerPhase === 'freefall' ? 8 : 9.5, centered: true });
+      // Queda livre: quanto mais rápido, mais longe a câmera, mais aberto o campo de visão e
+      // mais o vento sacode (sensação de velocidade). Paraquedas: recua e abre a visão para
+      // ler o mapa e escolher o pouso.
+      const ff = playerPhase === 'freefall';
+      const speedK = clamp((-g.player.ctrl.velocity.y - 15) / 33, 0, 1);
+      if (ff && speedK > 0.2) g.camera.shake(dt * 0.18 * speedK * speedK);
+      this.fovKick += (0 - this.fovKick) * Math.min(1, dt * 2.5);
+      const fov = (ff ? 0.98 + speedK * 0.24 : 1.02) + this.fovKick;
+      g.camera.updateFollow(dt, g.player.position, {
+        height: ff ? 1.0 : 1.6,
+        aiming: false,
+        sprinting: false,
+        distanceOverride: ff ? 8.5 + speedK * 2.5 : 11.5,
+        centered: true,
+        noCollision: true,
+        fovOverride: fov,
+      });
     } else {
       g.followPlayerCamera(dt);
     }
+
+    // Efeitos da entrada e transições de fase do jogador.
+    if (playerPhase !== this.lastPhase) {
+      if (playerPhase === 'parachute') {
+        // Tranco da abertura: a câmera "puxa" o FOV e sacode.
+        this.fovKick = -0.22;
+        g.camera.shake(0.12);
+      } else if (playerPhase === 'landed' && this.lastPhase !== 'plane') {
+        this.fx.landed(g.player.position);
+      }
+      this.lastPhase = playerPhase;
+    }
+    const h = playerPhase === 'plane' ? 999 : g.drop.heightOf(g.player);
+    this.fx.update(dt, playerPhase, g.player.position, g.player.ctrl.velocity, h);
+    if (playerPhase === 'landed') this.fx.stopAir();
 
     this.updateHud(playerPhase);
 
