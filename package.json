@@ -1,0 +1,21 @@
+{
+  "name": "quebrada-royale",
+  "private": true,
+  "version": "0.1.0",
+  "description": "QUEBRADA ROYALE - Battle Royale 3D de navegador ambientado em uma comunidade brasileira",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@babylonjs/core": "^8.56.2",
+    "@babylonjs/loaders": "^8.56.2"
+  },
+  "devDependencies": {
+    "typescript": "~5.8",
+    "vite": "^6.4.4"
+  }
+}

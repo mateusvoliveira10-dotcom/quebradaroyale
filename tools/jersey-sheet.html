@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Camisas · conferência</title>
+    <style>
+      body { margin: 0; padding: 12px; background: #20242e; color: #fff; font: 12px 'Segoe UI', sans-serif; }
+      .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+      .c { background: #2c3240; border-radius: 8px; padding: 6px; text-align: center; }
+      .c img { width: 49%; display: inline-block; border-radius: 4px; }
+      .c.atlas img { width: 100%; }
+    </style>
+  </head>
+  <body>
+    <!-- Página de conferência (dev): miniatura (frente) e prévia das costas renderizadas no Blender.
+         ?atlas mostra os atlas de textura no lugar das prévias. -->
+    <div class="grid" id="g"></div>
+    <script>
+      const ids = ['jersey_atletico_mg', 'jersey_cruzeiro', 'jersey_sao_paulo', 'jersey_santos', 'jersey_palmeiras', 'jersey_flamengo', 'jersey_bahia', 'jersey_gremio', 'jersey_fluminense', 'jersey_botafogo'];
+      const atlas = location.search.includes('atlas');
+      const base = '/assets/customization/jerseys/';
+      document.getElementById('g').innerHTML = ids
+        .map((id) =>
+          atlas
+            ? `<div class="c atlas"><img src="${base}${id}/albedo.webp"><div>${id}</div></div>`
+            : `<div class="c"><img src="${base}${id}/thumb.webp"><img src="/art/build/camisas_previa/${id}_costas.webp?${Date.now()}"><div>${id}</div></div>`,
+        )
+        .join('');
+    </script>
+  </body>
+</html>

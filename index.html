@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>QUEBRADA ROYALE</title>
+    <link rel="icon" href="/logo.webp" />
+    <link rel="preload" href="/logo.webp" as="image" />
+  </head>
+  <body>
+    <canvas id="game-canvas"></canvas>
+
+    <!-- ============================== HUD DE PARTIDA ============================== -->
+    <div id="hud" class="hidden">
+      <div id="damage-vignette"></div>
+      <div id="scope"></div>
+      <div id="crosshair" class="hidden cross">
+        <span class="ch ch-top"></span>
+        <span class="ch ch-bottom"></span>
+        <span class="ch ch-left"></span>
+        <span class="ch ch-right"></span>
+        <span class="ch-ring"></span>
+        <span class="ch-dot"></span>
+      </div>
+      <div id="hitmarker"></div>
+      <div id="dmg-dirs"></div>
+      <div id="elim" class="hidden"><b>ELIMINADO</b><span id="elim-count">1</span></div>
+      <div id="damage-layer"></div>
+      <div id="nameplates"></div>
+
+      <div id="topbar">
+        <div id="phase-pill">NO AVIÃO</div>
+        <div id="match-timer">00:00</div>
+        <div id="alive-pill" class="hidden"><b id="alive-count">3</b> VIVOS</div>
+      </div>
+      <div id="teamscore" class="hidden">
+        <div class="team blue"><span>AZUL</span><b id="score-blue">0</b></div>
+        <div id="dm-timer">05:00</div>
+        <div class="team red"><b id="score-red">0</b><span>VERMELHO</span></div>
+      </div>
+      <div id="zone-info" class="hidden"></div>
+      <div id="protect" class="hidden">PROTEGIDO</div>
+      <div id="respawn" class="hidden">Renascendo em <b id="respawn-time">4</b>…</div>
+
+      <div id="drop-panel" class="hidden">
+        <div id="drop-title">SALTE QUANDO QUISER</div>
+        <div id="drop-hint"><kbd>Espaço</kbd> saltar do avião</div>
+        <div id="altimeter"><div id="altimeter-fill"></div></div>
+      </div>
+
+      <div id="minimap-wrap">
+        <canvas id="minimap" width="210" height="210"></canvas>
+        <div id="minimap-label">QUEBRADA</div>
+      </div>
+      <div id="killfeed"></div>
+
+      <div id="training-panel" class="hidden">
+        <div class="tp-row"><span>TEMPO</span><b id="tp-time">60.0</b></div>
+        <div class="tp-row"><span>PONTOS</span><b id="tp-score">0</b></div>
+        <div class="tp-row"><span>ACERTOS</span><b id="tp-hits">0</b></div>
+        <div class="tp-row"><span>TIROS</span><b id="tp-shots">0</b></div>
+        <div class="tp-row"><span>PRECISÃO</span><b id="tp-acc">0%</b></div>
+        <div class="tp-diff" id="tp-diff">FÁCIL</div>
+        <div class="tp-hint"><kbd>T</kbd> reiniciar · <kbd>Esc</kbd> menu</div>
+      </div>
+      <div id="countdown" class="hidden">3</div>
+
+      <div id="toasts"></div>
+      <div id="prompt" class="hidden"><kbd>E</kbd><span id="prompt-text"></span></div>
+      <div id="reload" class="hidden"><div id="reload-fill"></div><span>RECARREGANDO</span></div>
+
+      <div id="health-wrap">
+        <div id="health-label"><span id="player-name">VOCÊ</span><span class="nums"><b id="shield-num" class="zero">0</b><b id="health-num">100</b></span></div>
+        <div id="shield-bar"><div id="shield-fill"></div></div>
+        <div id="health-bar"><div id="health-fill"></div></div>
+      </div>
+
+      <div id="loadout">
+        <div class="ammo-reserve" id="ammo-reserve"></div>
+        <div class="slots">
+          <div class="slot" id="slot-0"><span class="key">1</span><span class="name">Vazio</span><span class="mag"></span><span class="bar"></span></div>
+          <div class="slot" id="slot-1"><span class="key">2</span><span class="name">Vazio</span><span class="mag"></span><span class="bar"></span></div>
+        </div>
+      </div>
+
+      <div id="debug" class="hidden"></div>
+      <div id="help" class="hidden">
+        <strong>Controles</strong>
+        <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> mover · <kbd>Shift</kbd> correr</span>
+        <span><kbd>Espaço</kbd> pular / escalar muro</span>
+        <span><kbd>C</kbd> agachar · <kbd>E</kbd> pegar</span>
+        <span><kbd>1</kbd><kbd>2</kbd><kbd>Q</kbd> armas · <kbd>R</kbd> recarregar</span>
+        <span><kbd>Mouse esq.</kbd> atirar · <kbd>Mouse dir.</kbd> mirar</span>
+        <span><kbd>H</kbd> ajuda · <kbd>F3</kbd> debug · <kbd>Esc</kbd> menu</span>
+      </div>
+    </div>
+
+    <!-- ============================== LOBBY ============================== -->
+    <div id="lobby" class="hidden">
+      <header id="lobby-top">
+        <img class="brand" src="/logo.webp" alt="Quebrada Royale" draggable="false" />
+        <nav>
+          <button class="nav-btn active" data-tab="play">JOGAR</button>
+          <button class="nav-btn" data-tab="custom">PERSONALIZAR</button>
+          <button class="nav-btn" data-tab="settings">CONFIGURAÇÕES</button>
+        </nav>
+        <div class="player-chip"><span class="dot"></span><span id="lobby-name">Cria da Quebrada</span></div>
+      </header>
+
+      <section id="tab-play" class="tab">
+        <div id="mode-info">
+          <div class="mi-tag" id="mode-info-tag"></div>
+          <div id="mode-info-title"></div>
+          <div id="mode-info-desc"></div>
+        </div>
+        <div id="play-dock">
+          <button id="selected-mode" class="mode-tile" type="button" title="Trocar modo"></button>
+          <button id="change-mode" type="button">TROCAR MODO <span>▸</span></button>
+          <button id="play-button" type="button">JOGAR</button>
+        </div>
+        <div id="mode-picker" class="hidden">
+          <div class="picker-head">
+            <div class="picker-title">ESCOLHA O MODO</div>
+            <button id="picker-close" type="button">FECHAR ✕</button>
+          </div>
+          <div id="mode-grid"></div>
+        </div>
+      </section>
+
+      <section id="tab-custom" class="tab hidden">
+        <div id="custom-panel">
+          <div class="panel-title">PERSONALIZAR PERSONAGEM</div>
+          <div id="custom-cats"></div>
+          <div id="custom-options"></div>
+          <div class="custom-hint">Arraste o personagem para girar · Salvo automaticamente</div>
+          <button class="back-btn" data-back="play" type="button">VOLTAR</button>
+        </div>
+        <div id="rotate-controls">
+          <button id="rot-left" type="button">⟲</button>
+          <button id="rot-right" type="button">⟳</button>
+        </div>
+      </section>
+
+      <section id="tab-settings" class="tab hidden">
+        <div id="settings-panel">
+          <div class="panel-title">CONFIGURAÇÕES</div>
+          <label>Nome <input id="set-name" maxlength="18" type="text" /></label>
+          <label>Sensibilidade do mouse <span id="set-sens-val"></span><input id="set-sens" type="range" min="0.2" max="3" step="0.05" /></label>
+          <label class="check"><input id="set-invert" type="checkbox" /> Inverter eixo vertical</label>
+          <label>Campo de visão <span id="set-fov-val"></span><input id="set-fov" type="range" min="40" max="75" step="1" /></label>
+          <label>Volume <span id="set-vol-val"></span><input id="set-vol" type="range" min="0" max="1" step="0.05" /></label>
+          <label>Qualidade gráfica
+            <select id="set-quality">
+              <option value="alta">Alta</option>
+              <option value="media">Média</option>
+              <option value="baixa">Baixa (mais FPS)</option>
+            </select>
+          </label>
+          <button class="back-btn" data-back="play" type="button">VOLTAR</button>
+        </div>
+      </section>
+    </div>
+
+    <!-- ============================== SOBREPOSIÇÕES ============================== -->
+    <div id="loading" class="overlay">
+      <img class="logo" src="/logo.webp" alt="Quebrada Royale" draggable="false" />
+      <p id="loading-text">Carregando a comunidade…</p>
+    </div>
+
+    <div id="pause" class="overlay hidden">
+      <div class="card">
+        <div class="card-title">PAUSADO</div>
+        <button id="pause-continue" class="big-btn" type="button">CONTINUAR</button>
+        <button id="pause-restart" class="mid-btn" type="button">REINICIAR</button>
+        <button id="pause-difficulty" class="mid-btn hidden" type="button">MUDAR DIFICULDADE</button>
+        <button id="pause-lobby" class="mid-btn ghost" type="button">VOLTAR AO LOBBY</button>
+      </div>
+    </div>
+
+    <div id="endscreen" class="overlay hidden">
+      <div class="card wide">
+        <div id="end-title" class="card-title">VITÓRIA</div>
+        <div id="end-sub"></div>
+        <div id="end-stats"></div>
+        <div class="row">
+          <button id="end-again" class="big-btn" type="button">JOGAR NOVAMENTE</button>
+          <button id="end-lobby" class="mid-btn ghost" type="button">VOLTAR AO LOBBY</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="loadout-pick" class="overlay hidden">
+      <div class="card wide">
+        <div class="card-title">ESCOLHA SEU EQUIPAMENTO</div>
+        <div class="card-sub">Deathmatch 5v5 · arma principal (a pistola vem junto)</div>
+        <div id="loadout-options"></div>
+        <button id="loadout-go" class="big-btn" type="button">ENTRAR NA PARTIDA</button>
+        <button id="loadout-back" class="mid-btn ghost" type="button">VOLTAR</button>
+      </div>
+    </div>
+
+    <div id="training-setup" class="overlay hidden">
+      <div class="card wide">
+        <div class="card-title">GALPÃO DA QUEBRADA</div>
+        <div class="card-sub">Escolha a dificuldade. Troque de arma nas bancadas com <kbd>E</kbd>.</div>
+        <div id="difficulty-options"></div>
+        <div id="training-result" class="hidden"></div>
+        <button id="training-go" class="big-btn" type="button">COMEÇAR (60 s)</button>
+        <button id="training-back" class="mid-btn ghost" type="button">VOLTAR AO LOBBY</button>
+      </div>
+    </div>
+
+    <div id="click-to-play" class="overlay soft hidden">
+      <div class="card">
+        <div class="card-title">CLIQUE PARA JOGAR</div>
+        <div class="card-sub">O mouse controla a câmera. <kbd>Esc</kbd> abre o menu.</div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

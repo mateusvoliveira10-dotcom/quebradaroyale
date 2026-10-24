@@ -1,0 +1,10 @@
+node_modules
+dist
+*.log
+.DS_Store
+backups
+# Arte-fonte e intermediários do Blender (centenas de MB; GitHub recusa arquivos > 100 MB).
+# Os modelos prontos do jogo ficam em public/ e entram no repositório.
+art
+# Configuração local do Claude Code / editor.
+.claude
