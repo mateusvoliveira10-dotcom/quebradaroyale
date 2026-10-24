@@ -1,5 +1,5 @@
 import '@babylonjs/loaders/glTF';
-import { LoadAssetContainerAsync, Material, Mesh, Node, PBRMaterial, Scene, Vector3, VertexData } from '@babylonjs/core';
+import { Color3, LoadAssetContainerAsync, Material, Mesh, Node, PBRMaterial, Scene, StandardMaterial, Texture, Vector3, VertexData } from '@babylonjs/core';
 import { studioMaterial } from '../player/GlassesMaterial';
 
 /**
@@ -52,6 +52,11 @@ export class WorldAssets {
    * Arv_<espécie> (+ Arv_<espécie>_lod1), Bananeira, Mato, Capim, Trepadeira, Cacamba.
    */
   readonly props = new Map<string, WorldModel>();
+  /**
+   * Armas do pacote enviado pelo usuário (`tools/blender/gunpack.py`): GP_pistola e
+   * GP_smg_0..4 (uma por raridade). Malha-base já com o material texturizado do arquivo.
+   */
+  readonly gunPack = new Map<string, Mesh>();
   /**
    * Veículos enviados pelo usuário (modelos do Tripo tratados por `tools/blender/vehicle.py`:
    * vidros gerados, letreiros corrigidos, versão de longe). Ao contrário dos carros de
@@ -118,6 +123,48 @@ export class WorldAssets {
         }
       }),
     );
+    try {
+      const pack = await LoadAssetContainerAsync(`${base}gunpack.glb`, scene);
+      pack.addAllToScene();
+      // PBR do arquivo → StandardMaterial com a mesma textura e relevo: o jogo não tem mapa de
+      // ambiente, e sem ele o metal PBR fica quase preto.
+      let gunMat: StandardMaterial | null = null;
+      const toStandard = (m: Material | null): Material | null => {
+        if (m && !(m instanceof PBRMaterial)) return m;
+        if (gunMat) return gunMat;
+        gunMat = new StandardMaterial('gunpack', scene);
+        // Texturas soltas (gunpack_albedo/normal.jpg): a embutida no GLB chegava preta aqui.
+        // UV do glTF: sem inverter o eixo V.
+        gunMat.diffuseTexture = new Texture(`${base}gunpack_albedo.jpg`, scene, false, false);
+        gunMat.bumpTexture = new Texture(`${base}gunpack_normal.jpg`, scene, false, false);
+        gunMat.invertNormalMapY = true;
+        void m;
+        // A textura é de metal escuro: clareia um pouco para ler bem no jogo.
+        gunMat.diffuseColor = new Color3(1.45, 1.45, 1.45);
+        gunMat.specularColor = new Color3(0.5, 0.5, 0.52);
+        gunMat.specularPower = 48;
+        gunMat.emissiveColor = new Color3(0.14, 0.14, 0.14);
+        return gunMat;
+      };
+      for (const node of pack.meshes) {
+        if (!(node instanceof Mesh) || node.getTotalVertices() === 0) continue;
+        const owner = ownerName(node);
+        if (!owner) continue;
+        node.computeWorldMatrix(true);
+        const vd = VertexData.ExtractFromMesh(node, true, true);
+        vd.transform(node.getWorldMatrix());
+        const baked = new Mesh(`${owner}_base`, scene);
+        vd.applyToMesh(baked, false);
+        baked.material = toStandard(node.material);
+        baked.setEnabled(false);
+        baked.isPickable = false;
+        assets.gunPack.set(owner, baked);
+      }
+      // Só as malhas originais saem; material e texturas ficam (as bases usam).
+      for (const n of [...pack.meshes, ...pack.transformNodes]) n.dispose(false, false);
+    } catch (err) {
+      console.warn('[Armas] gunpack.glb não carregou; usando as armas de weapons.glb.', err);
+    }
     const carModels = collect(scene, cars.meshes);
     for (const id of CAR_MODELS) {
       const model = carModels.get(`Car_${id}`);

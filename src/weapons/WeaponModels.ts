@@ -84,7 +84,40 @@ function buildFromAsset(scene: Scene, id: WeaponId, rarity: number): WeaponModel
   return { root, muzzle, meshes, accents };
 }
 
+/**
+ * Armas do pacote do usuário (texturizadas): a pistola compacta e cinco submetralhadoras,
+ * uma por raridade. Cano medido no gunpack.py (altura e frente a partir do punho).
+ */
+const PACK: Partial<Record<WeaponId, (rarity: number) => string>> = {
+  pistola: () => 'GP_pistola',
+  smg: (r) => `GP_smg_${Math.max(0, Math.min(4, r))}`,
+};
+const PACK_MUZZLE: Record<string, [number, number]> = {
+  GP_pistola: [0.055, 0.25],
+  GP_smg_0: [0.026, 0.175],
+  GP_smg_1: [0.026, 0.116],
+  GP_smg_2: [0.065, 0.262],
+  GP_smg_3: [0.035, 0.322],
+  GP_smg_4: [0.05, 0.403],
+};
+
+function buildFromPack(scene: Scene, id: WeaponId, rarity: number): WeaponModel | null {
+  const key = PACK[id]?.(rarity);
+  const base = key ? WorldAssets.current?.gunPack.get(key) : undefined;
+  if (!key || !base) return null;
+  const root = new TransformNode(`weapon_${id}`, scene);
+  const mesh = base.clone(`gun_${key}`, root, true);
+  mesh.setEnabled(true);
+  mesh.isPickable = false;
+  const muzzle = new TransformNode('muzzle', scene);
+  muzzle.parent = root;
+  muzzle.position = new Vector3(0, PACK_MUZZLE[key][0], PACK_MUZZLE[key][1]);
+  return { root, muzzle, meshes: [mesh], accents: [] };
+}
+
 export function buildWeaponModel(scene: Scene, id: WeaponId, rarity: number): WeaponModel {
+  const fromPack = buildFromPack(scene, id, rarity);
+  if (fromPack) return fromPack;
   const fromAsset = buildFromAsset(scene, id, rarity);
   if (fromAsset) return fromAsset;
   const g = mats(scene);

@@ -523,8 +523,12 @@ export function addVehicle(b: WorldBuilder, id: DetailedVehicleId, x: number, z:
   const mat = (role: string) => (role === `${id}_glass` ? glass : (v.materials.get(role) ?? null));
   // O modelo tem a frente em -X, como os carros de cars.py.
   const rot = ry + Math.PI;
-  b.model(v.model, x, 0, z, rot, mat, v.lod ? { lod: 0 } : {});
-  if (v.lod) b.model(v.lod, x, 0, z, rot, mat, { lod: 1, collide: false });
+  // A versão de longe da ambulância saía derretida e desbotada (parecia uma Kombi velha):
+  // são só duas no mapa, então ela usa o modelo completo sempre (some além de 130 m pelo
+  // corte de detalhes do StaticBatcher).
+  const lod = id === 'ambulancia' ? null : v.lod;
+  b.model(v.model, x, 0, z, rot, mat, lod ? { lod: 0 } : {});
+  if (lod) b.model(lod, x, 0, z, rot, mat, { lod: 1, collide: false });
   const sx = v.model.max.x - v.model.min.x;
   const sz = v.model.max.z - v.model.min.z;
   const along = Math.abs(Math.cos(ry)) > 0.5;

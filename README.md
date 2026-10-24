@@ -101,6 +101,14 @@ Blender, centenas de MB) e `backups/` não vão para o repositório.
 - **Armas novas** (`tools/blender/weapons.py` → `weapons.glb`, 240 KB): pistola, submetralhadora,
   escopeta pump, fuzil com trilho e mira holográfica, rifle de ferrolho com luneta. Mesmas medidas
   das antigas (as mãos encaixam igual) e uma malha por material (4–6 por arma, antes 8–10 peças).
+- **Armas do pacote enviado** (`tools/blender/gunpack.py` → `gunpack.glb` 1,1 MB + `gunpack_albedo/normal.jpg`):
+  a folha do Tripo com 8 armas (942 mil triângulos, texturas 4K, 28 MB) foi recortada arma por
+  arma, com origem no punho, cano para a frente, ~6 mil triângulos cada e textura em 1024. A
+  compacta virou a **pistola**; cinco viraram a **submetralhadora**, uma por raridade (comum tipo
+  Uzi, incomum tipo MAC, rara de cabo para trás, épica de tambor, lendária com silenciador). As
+  outras armas (fuzil, escopeta, rifle de precisão) continuam as de `weapons.py`.
+- **Ambulância:** a versão de longe saía derretida (parecia uma Kombi velha); as duas ambulâncias
+  agora usam o modelo completo em qualquer distância.
 - **Sons dos tiros** em camadas (`Audio.ts`): estalo, corpo com timbre de cada arma, soco
   grave, mecânica (pump, ferrolho) e eco de rua por reverb gerado no jogo.
 - **Música desde a logo:** o `index.html` começa a tocar antes do jogo baixar; se o navegador
