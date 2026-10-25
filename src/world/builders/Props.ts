@@ -1,4 +1,4 @@
-import { Color3, DynamicTexture, Material, MeshBuilder, PBRMaterial, StandardMaterial, Vector3, VertexBuffer } from '@babylonjs/core';
+import { Color3, DynamicTexture, Material, MeshBuilder, PBRMaterial, StandardMaterial, Vector3, Vector4, VertexBuffer } from '@babylonjs/core';
 import { studioMaterial } from '../../player/GlassesMaterial';
 import { Rng } from '../../utils/random';
 import { GRAFFITI_TILES } from '../Materials';
@@ -296,6 +296,48 @@ export function addClouds(b: WorldBuilder, rng: Rng, count: number): void {
   }
 }
 
+const BG_HOUSE_UV = [0, 1, 2, 3].map(() => new Vector4(0, 0, 1, 1)).concat([new Vector4(0, 0.94, 1, 0.99), new Vector4(0, 0.94, 1, 0.99)]);
+
+/**
+ * Bairro em volta do muro, até ~75 m para fora: quarteirões de casinhas (fachada com janelas,
+ * laje cinza, caixa d'água azul em parte delas) separados por ruas. Só cenário, sem colisão
+ * (fica fora da área jogável). Gerador próprio: o mapa não muda.
+ */
+export function addOutskirts(b: WorldBuilder, half: number): void {
+  const m = b.mats;
+  const rng = new Rng(31415);
+  const inner = half + 7;
+  const outer = half + 75;
+  const block = 22; // quarteirão + rua
+  for (let gx = -outer; gx < outer; gx += block) {
+    for (let gz = -outer; gz < outer; gz += block) {
+      // Só o anel em volta da comunidade.
+      const cxB = gx + block / 2;
+      const czB = gz + block / 2;
+      if (Math.max(Math.abs(cxB), Math.abs(czB)) < inner + block / 2 - 4) continue;
+      // Casas em fileira dentro do quarteirão (deixa 5 m de rua).
+      for (let x = gx + 2.5; x < gx + block - 7; x += rng.range(5.5, 8)) {
+        for (const zz of [gz + 2.5, gz + block / 2 + 0.5]) {
+          if (rng.chance(0.12)) continue;
+          const w = rng.range(5, 7.5);
+          const d = rng.range(5, 7.5);
+          const h = rng.chance(0.55) ? 6 : 3;
+          const px = x + w / 2;
+          const pz = zz + d / 2;
+          if (Math.max(Math.abs(px), Math.abs(pz)) < inner) continue;
+          // Prédio e câmera do lobby (além do muro norte, perto de x = -8): área livre.
+          if (px > -34 && px < 20 && pz > half && pz < half + 40) continue;
+          const mat = rng.chance(0.35) ? m.bgBrick : rng.pick(m.bgFacades);
+          const box = MeshBuilder.CreateBox('subúrbio', { width: w, height: h, depth: d, faceUV: BG_HOUSE_UV }, b.scene);
+          box.position.set(px, h / 2, pz);
+          b.addMesh(box, mat);
+          if (rng.chance(0.4)) b.cylinder({ diameter: 1.2, h: 0.9, x: px + rng.range(-w / 4, w / 4), y: h, z: pz + rng.range(-d / 4, d / 4), mat: m.tank, tessellation: 10 });
+        }
+      }
+    }
+  }
+}
+
 /**
  * Morros ao redor da comunidade cobertos de casinhas (pano de fundo). Dá a
  * sensação de uma cidade enorme sem custo de colisão.
@@ -327,8 +369,9 @@ export function addBackdropHills(b: WorldBuilder, rng: Rng, innerRadius: number)
       if (h < 1) continue;
       const w = rng.range(4, 8);
       const hh = rng.range(3, 7);
-      const mat = rng.chance(0.4) ? m.brick : rng.pick(m.paints);
-      const box = MeshBuilder.CreateBox('bgHouse', { width: w, height: hh, depth: rng.range(4, 7) }, b.scene);
+      const mat = rng.chance(0.4) ? m.bgBrick : rng.pick(m.bgFacades);
+      // Faces laterais com a fachada inteira; topo e fundo só na faixa de concreto (laje).
+      const box = MeshBuilder.CreateBox('bgHouse', { width: w, height: hh, depth: rng.range(4, 7), faceUV: BG_HOUSE_UV }, b.scene);
       box.position.set(hx + lx, h + hh / 2 - 0.8, hz + lz);
       box.rotation.y = rng.range(0, Math.PI);
       b.addMesh(box, mat);

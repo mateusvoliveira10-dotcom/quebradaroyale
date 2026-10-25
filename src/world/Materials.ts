@@ -101,7 +101,18 @@ export class Materials {
   readonly doors: StandardMaterial[];
   readonly carPaints: StandardMaterial[];
   readonly clothes: StandardMaterial[];
+  /** Embalagens de mercadinho (rótulos genéricos, sem marca); mesma quantidade das cores antigas. */
   readonly productColors: StandardMaterial[];
+  /** Piso cerâmico claro, lâmpada fluorescente, cartaz de oferta e gôndola de metal. */
+  readonly mercadoPiso: StandardMaterial;
+  readonly fluorescente: StandardMaterial;
+  readonly cartazOferta: StandardMaterial;
+  readonly gondola: StandardMaterial;
+  /** Fachadas das casinhas dos morros do horizonte (janelas, porta e laje), por cor. */
+  readonly bgFacades: StandardMaterial[];
+  readonly bgBrick: StandardMaterial;
+  /** Chão de fora do muro: terra com mato em escala grande (no lugar do verde chapado). */
+  readonly campoFora: StandardMaterial;
   /** Texturas PBR em escala real do setor reconstruído (Fase 4). */
   readonly hq: MaterialsHQ;
 
@@ -273,8 +284,34 @@ export class Materials {
     const clothColors = ['#e8413a', '#2f7fe0', '#ffd21f', '#ffffff', '#1fa64a', '#f07ab0', '#7a4ac8', '#ff8a1f'];
     this.clothes = clothColors.map((c, i) => this.make(`cloth_${i}`, c, { tex: noiseTex, castShadow: false }));
 
-    const productColors = ['#e8413a', '#2f7fe0', '#ffd21f', '#1fa64a', '#ff8a1f', '#ffffff', '#8a3fb0'];
-    this.productColors = productColors.map((c, i) => this.make(`product_${i}`, c, { spec: 0.4 }));
+    // Embalagens: fundo colorido, faixa, nome genérico do produto e peso.
+    const products: Array<[string, string, string, string]> = [
+      ['ARROZ', '#f4efe3', '#d8312c', '5kg'],
+      ['FEIJÃO', '#2f62c9', '#ffd21f', '1kg'],
+      ['CAFÉ', '#3b2216', '#e8b422', '500g'],
+      ['LEITE', '#ffffff', '#2f7fe0', '1L'],
+      ['ÓLEO', '#f2c21b', '#1f8f4a', '900ml'],
+      ['MACARRÃO', '#d8312c', '#ffffff', '500g'],
+      ['BISCOITO', '#8a3fb0', '#ffd21f', '200g'],
+    ];
+    this.productColors = products.map(([name, bg, fg, weight], i) =>
+      this.make(`product_${i}`, '#ffffff', { spec: 0.35, power: 40, tex: this.texture(`tex_product_${i}`, 128, (ctx, s) => this.drawProduct(ctx, s, name, bg, fg, weight)) }),
+    );
+    const pisoTex = this.texture('tex_mercadoPiso', 256, (ctx, s) => this.drawFloorTiles(ctx, s));
+    this.mercadoPiso = this.make('mercadoPiso', '#ffffff', { tex: pisoTex, spec: 0.5, power: 70, castShadow: false });
+    this.fluorescente = this.make('fluorescente', '#f4fbff', { emissive: 1, castShadow: false });
+    this.cartazOferta = this.make('cartazOferta', '#ffffff', { emissive: 0.25, tex: this.texture('tex_oferta', 256, (ctx, s) => this.drawOffer(ctx, s)) });
+    this.gondola = this.make('gondola', '#dfe3e6', { spec: 0.6, power: 60, tex: noiseTex });
+    // Fachadas do horizonte: as cores das tintas sobre um desenho com janelas, porta e laje.
+    const facadeTex = this.texture('tex_bgFacade', 128, (ctx, s) => this.drawBgFacade(ctx, s, false));
+    const brickFacadeTex = this.texture('tex_bgBrick', 128, (ctx, s) => this.drawBgFacade(ctx, s, true));
+    this.bgFacades = paintColors.map((c, i) => this.make(`bgFacade_${i}`, c, { tex: facadeTex }));
+    this.bgBrick = this.make('bgBrick', '#ffffff', { tex: brickFacadeTex });
+    // Textura própria (um clone de DynamicTexture nunca fica "pronto" e o chão sumia).
+    const foraTex = this.texture('tex_campoFora', 256, (ctx, s) => this.drawDirt(ctx, s));
+    foraTex.uScale = 150;
+    foraTex.vScale = 150;
+    this.campoFora = this.make('campoFora', '#a8a27a', { tex: foraTex, castShadow: false });
     this.hq = new MaterialsHQ(scene);
   }
 
@@ -651,6 +688,95 @@ export class Materials {
       ctx.stroke();
     }
     this.blotches(ctx, s, 6, 'rgba(0,0,0,0.2)', 8, 20);
+  }
+
+  private drawProduct(ctx: Ctx, s: number, name: string, bg: string, fg: string, weight: string): void {
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, s, s);
+    ctx.fillStyle = fg;
+    ctx.fillRect(0, s * 0.28, s, s * 0.34);
+    ctx.fillStyle = bg;
+    ctx.font = `900 ${s * 0.2}px "Arial Black", Impact, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(name, s / 2, s * 0.45, s * 0.92);
+    ctx.fillStyle = fg;
+    ctx.font = `700 ${s * 0.13}px Arial, sans-serif`;
+    ctx.fillText(weight, s / 2, s * 0.8);
+    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    ctx.fillRect(s * 0.08, s * 0.06, s * 0.1, s * 0.88);
+    this.speckle(ctx, s, 0.03);
+  }
+
+  /** Piso cerâmico 4 x 4 (1 tile = 1 m), juntas cinza e leve sujeira. */
+  private drawFloorTiles(ctx: Ctx, s: number): void {
+    ctx.fillStyle = '#b9b6ae';
+    ctx.fillRect(0, 0, s, s);
+    const n = 4;
+    const t = s / n;
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        const g = ctx.createLinearGradient(i * t, j * t, i * t + t, j * t + t);
+        const tone = 228 + Math.floor(this.rng.range(-8, 6));
+        g.addColorStop(0, `rgb(${tone},${tone - 2},${tone - 6})`);
+        g.addColorStop(1, `rgb(${tone - 12},${tone - 14},${tone - 18})`);
+        ctx.fillStyle = g;
+        ctx.fillRect(i * t + 2, j * t + 2, t - 4, t - 4);
+      }
+    }
+    this.blotches(ctx, s, 6, 'rgba(90,80,60,0.12)', 10, 40);
+  }
+
+  private drawOffer(ctx: Ctx, s: number): void {
+    ctx.fillStyle = '#ffd21f';
+    ctx.fillRect(0, 0, s, s);
+    ctx.fillStyle = '#d8312c';
+    ctx.fillRect(0, 0, s, s * 0.32);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `900 ${s * 0.2}px Impact, "Arial Black", sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('OFERTA!', s / 2, s * 0.17);
+    ctx.fillStyle = '#d8312c';
+    ctx.font = `900 ${s * 0.3}px Impact, "Arial Black", sans-serif`;
+    ctx.fillText('R$ 4,99', s / 2, s * 0.58);
+    ctx.fillStyle = '#1b1420';
+    ctx.font = `700 ${s * 0.1}px Arial, sans-serif`;
+    ctx.fillText('LEVE 3 PAGUE 2', s / 2, s * 0.85);
+  }
+
+  /**
+   * Fachada de casinha para os morros do horizonte (uma face de caixa = uma casa de 2
+   * andares): reboco, duas janelas em cada andar, porta, borda da laje e sujeira na base.
+   */
+  private drawBgFacade(ctx: Ctx, s: number, brick: boolean): void {
+    if (brick) this.drawBricks(ctx, s);
+    else this.drawNoise(ctx, s, '#ffffff', 0.1, 0.18);
+    const u = s / 16;
+    // Bordas de laje (concreto) em cima e no meio.
+    ctx.fillStyle = 'rgba(190,186,178,1)';
+    ctx.fillRect(0, 0, s, u * 1.2);
+    ctx.fillRect(0, s * 0.5 - u * 0.5, s, u);
+    // Janelas (vidro escuro com moldura clara) e porta.
+    const win = (x: number, y: number, w: number, h: number) => {
+      ctx.fillStyle = '#e8e2d4';
+      ctx.fillRect(x - u * 0.3, y - u * 0.3, w + u * 0.6, h + u * 0.6);
+      ctx.fillStyle = '#26303d';
+      ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = 'rgba(160,200,230,0.35)';
+      ctx.fillRect(x, y, w * 0.45, h * 0.5);
+    };
+    win(u * 2.5, u * 3, u * 4, u * 3.2);
+    win(u * 9.5, u * 3, u * 4, u * 3.2);
+    win(u * 9.5, u * 10.5, u * 4, u * 3);
+    ctx.fillStyle = '#5b3a24';
+    ctx.fillRect(u * 2.8, u * 10, u * 3.2, u * 6);
+    // Sujeira escorrida da laje e na base.
+    const g = ctx.createLinearGradient(0, s * 0.82, 0, s);
+    g.addColorStop(0, 'rgba(80,60,40,0)');
+    g.addColorStop(1, 'rgba(80,60,40,0.4)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, s * 0.82, s, s * 0.18);
   }
 
   /** Luminoso de táxi: TÁXI em preto sobre amarelo-claro (as faces da caixa repetem o letreiro). */

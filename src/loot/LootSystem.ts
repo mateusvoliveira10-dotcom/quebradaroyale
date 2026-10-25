@@ -292,10 +292,8 @@ export class LootSystem {
         const near = vis && d < GLOW_RANGE;
         if (near !== !!it.glowOn) {
           it.glowOn = near;
-          for (const m of it.glowMeshes) {
-            if (near) this.glow.addIncludedOnlyMesh(m);
-            else this.glow.removeIncludedOnlyMesh(m);
-          }
+          // Sem a camada de glow: ela desenha o halo por cima de tudo (dava para ver o brilho
+          // através das paredes). Anel e feixe são escondidos pelas paredes normalmente.
           if (it.kind === 'weapon') {
             it.meshes[0].setEnabled(near);
             it.beam?.setEnabled(near);

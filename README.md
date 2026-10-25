@@ -101,12 +101,17 @@ Blender, centenas de MB) e `backups/` não vão para o repositório.
 - **Armas novas** (`tools/blender/weapons.py` → `weapons.glb`, 240 KB): pistola, submetralhadora,
   escopeta pump, fuzil com trilho e mira holográfica, rifle de ferrolho com luneta. Mesmas medidas
   das antigas (as mãos encaixam igual) e uma malha por material (4–6 por arma, antes 8–10 peças).
-- **Armas do pacote enviado** (`tools/blender/gunpack.py` → `gunpack.glb` 1,1 MB + `gunpack_albedo/normal.jpg`):
-  a folha do Tripo com 8 armas (942 mil triângulos, texturas 4K, 28 MB) foi recortada arma por
-  arma, com origem no punho, cano para a frente, ~6 mil triângulos cada e textura em 1024. A
-  compacta virou a **pistola**; cinco viraram a **submetralhadora**, uma por raridade (comum tipo
-  Uzi, incomum tipo MAC, rara de cabo para trás, épica de tambor, lendária com silenciador). As
-  outras armas (fuzil, escopeta, rifle de precisão) continuam as de `weapons.py`.
+- **Armas mais realistas:** o pacote do Tripo saiu; voltaram as armas de `weapons.py` com
+  texturas geradas no jogo (`WeaponModels.ts`): aço oxidado escovado com riscos e quinas gastas,
+  polímero granulado, madeira com veios e nós, relevo (normal map) e reflexo só nos riscos.
+- **Brilho das armas através das paredes:** o loot saiu da GlowLayer (o halo era desenhado por
+  cima de tudo); o anel e o feixe de raridade respeitam a profundidade.
+- **Mercadinho:** piso cerâmico, gôndolas de metal com etiquetas de preço, embalagens com rótulo
+  genérico (arroz, feijão, café...), geladeira de bebidas com porta de vidro, lâmpadas
+  fluorescentes e cartazes de oferta.
+- **Menos "Minecraft":** as casinhas dos morros do horizonte ganharam fachada (janelas, porta,
+  laje) e o chão verde liso de fora virou terra com um anel de subúrbio além do muro
+  (`addOutskirts`).
 - **Ambulância:** a versão de longe saía derretida (parecia uma Kombi velha); as duas ambulâncias
   agora usam o modelo completo em qualquer distância.
 - **Sons dos tiros** em camadas (`Audio.ts`): estalo, corpo com timbre de cada arma, soco

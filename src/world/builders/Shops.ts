@@ -52,7 +52,7 @@ export function buildShop(b: WorldBuilder, rng: Rng, s: ShopSpec): ShopInfo {
   b.contactShadow(cx, cz, w, d, 0);
 
   // Piso.
-  b.box({ w: w - 0.2, h: 0.04, d: d - 0.2, x: cx, z: cz, y: 0, mat: kind === 'oficina' ? m.concreteDark : m.tile, tile: kind === 'oficina' ? 3 : 1.2 });
+  b.box({ w: w - 0.2, h: 0.04, d: d - 0.2, x: cx, z: cz, y: 0, mat: kind === 'oficina' ? m.concreteDark : kind === 'mercadinho' ? m.mercadoPiso : m.tile, tile: kind === 'oficina' ? 3 : kind === 'mercadinho' ? 1 : 1.2 });
 
   // Paredes do térreo (oco).
   const wallBox = (bw: number, bd: number, bx: number, bz: number, h = FLOOR_H, y = 0) =>
@@ -199,29 +199,79 @@ function furnishBoteco(b: WorldBuilder, rng: Rng, s: ShopSpec, inward: Inward, f
   loot.push(new Vector3(cx, 0.1, inward(1.6)));
 }
 
+/**
+ * Mercadinho por dentro: gôndolas de metal com quatro prateleiras e etiqueta de preço,
+ * produtos com embalagem impressa, geladeira de bebidas com porta de vidro, caixa com
+ * esteira, lâmpadas fluorescentes e cartazes de oferta. Os sorteios (rng) são exatamente os
+ * de antes, na mesma ordem: o mapa sorteado depois do mercadinho não muda.
+ */
 function furnishMercadinho(b: WorldBuilder, rng: Rng, s: ShopSpec, inward: Inward, frontZ: number, backZ: number, loot: Vector3[]): void {
   const m = b.mats;
   const { x0, w, front } = s;
   const cx = x0 + w / 2;
-  // Gôndolas com produtos.
+  const shelfYs = [0.23, 0.68, 1.13, 1.58];
+  // Gôndolas: base, painel central, prateleiras dos dois lados e etiquetas amarelas.
   for (const gz of [inward(3.4), inward(5.2)]) {
     const gw = w - 3.0;
     const gx = x0 + 1.9 + gw / 2;
-    b.box({ w: gw, h: 1.5, d: 0.5, x: gx, z: gz, y: 0, mat: m.white, collide: true });
+    b.collider(gw, 1.6, 0.5, gx, 0.8, gz);
+    b.box({ w: gw, h: 0.12, d: 0.5, x: gx, z: gz, y: 0, mat: m.gondola });
+    b.box({ w: gw, h: 1.6, d: 0.05, x: gx, z: gz, y: 0, mat: m.gondola });
+    for (const y of shelfYs) {
+      b.box({ w: gw, h: 0.02, d: 0.48, x: gx, z: gz, y, mat: m.gondola });
+      for (const side of [-1, 1]) b.box({ w: gw, h: 0.035, d: 0.006, x: gx, z: gz + side * 0.243, y: y - 0.03, mat: m.plasticYellow });
+    }
+    for (const side of [-1, 1]) b.box({ w: 0.03, h: 1.62, d: 0.5, x: gx + side * (gw / 2), z: gz, y: 0, mat: m.gondola });
     for (let level = 0; level < 3; level++) {
       for (let i = 0; i < 9; i++) {
         if (rng.chance(0.15)) continue;
         for (const side of [-1, 1]) {
-          b.box({ w: 0.24, h: rng.range(0.2, 0.32), d: 0.14, x: gx - gw / 2 + 0.2 + i * (gw / 9), z: gz + side * 0.2, y: 0.25 + level * 0.45, mat: rng.pick(m.productColors) });
+          const h = rng.range(0.2, 0.32);
+          const mat = rng.pick(m.productColors);
+          // tile = largura e tileV = altura: o rótulo inteiro aparece na frente da embalagem.
+          b.box({ w: 0.24, h, d: 0.14, x: gx - gw / 2 + 0.2 + i * (gw / 9), z: gz + side * 0.2, y: 0.25 + level * 0.45, mat, tile: 0.24, tileV: h });
         }
       }
     }
   }
-  // Caixa.
+  // Caixa: balcão de madeira, esteira, registradora e expositor de balas.
   b.box({ w: 1.4, h: 0.95, d: 0.6, x: x0 + 0.9, z: inward(1.6), y: 0, mat: m.wood, collide: true });
-  b.box({ w: 0.4, h: 0.25, d: 0.3, x: x0 + 0.9, z: inward(1.6), y: 0.95, mat: m.metalDark });
-  // Prateleira do fundo.
-  b.box({ w: w - 1.0, h: 1.9, d: 0.4, x: cx, z: backZ + front * 0.45, y: 0, mat: m.white, collide: true });
+  b.box({ w: 1.3, h: 0.02, d: 0.42, x: x0 + 0.9, z: inward(1.6), y: 0.95, mat: m.rubber });
+  b.box({ w: 0.4, h: 0.25, d: 0.3, x: x0 + 0.6, z: inward(1.6), y: 0.97, mat: m.metalDark });
+  b.box({ w: 0.3, h: 0.12, d: 0.02, x: x0 + 0.6, z: inward(1.6) + front * 0.16, y: 1.17, mat: m.lampOff });
+  for (let k = 0; k < 4; k++) b.box({ w: 0.14, h: 0.1, d: 0.1, x: x0 + 1.0 + (k % 2) * 0.16, z: inward(1.6) - front * 0.12, y: 0.97 + Math.floor(k / 2) * 0.1, mat: m.productColors[(k * 3) % m.productColors.length], tile: 0.14, tileV: 0.1 });
+  // Prateleira do fundo, com produtos em ordem (sem sorteio).
+  const bz = backZ + front * 0.45;
+  b.collider(w - 1.0, 1.9, 0.4, cx, 0.95, bz);
+  b.box({ w: w - 1.0, h: 1.9, d: 0.05, x: cx, z: bz + front * 0.18, y: 0, mat: m.gondola });
+  for (const y of shelfYs) {
+    b.box({ w: w - 1.0, h: 0.02, d: 0.4, x: cx, z: bz, y, mat: m.gondola });
+    const n = Math.floor((w - 1.2) / 0.3);
+    for (let i = 0; i < n; i++) {
+      if ((i * 7 + Math.round(y * 10)) % 5 === 0) continue;
+      const ph = 0.22 + ((i * 13) % 4) * 0.025;
+      b.box({ w: 0.24, h: ph, d: 0.14, x: cx - (w - 1.2) / 2 + 0.15 + i * 0.3, z: bz - front * 0.05, y: y + 0.02, mat: m.productColors[(i + Math.round(y * 3)) % m.productColors.length], tile: 0.24, tileV: ph });
+    }
+  }
+  // Geladeira de bebidas no canto da frente (porta de vidro virada para o corredor).
+  const fx = x0 + w - 0.6;
+  const fz = inward(1.7);
+  b.box({ w: 0.75, h: 2.0, d: 1.5, x: fx, z: fz, y: 0, mat: m.white, collide: true });
+  b.box({ w: 0.02, h: 1.75, d: 1.36, x: fx - 0.385, z: fz, y: 0.12, mat: m.glass });
+  b.box({ w: 0.02, h: 0.06, d: 1.36, x: fx - 0.39, z: fz, y: 1.92, mat: m.fluorescente });
+  for (let level = 0; level < 4; level++) {
+    for (let i = 0; i < 6; i++) {
+      b.cylinder({ diameter: 0.08, h: 0.28, x: fx - 0.2, y: 0.2 + level * 0.42, z: fz - 0.6 + i * 0.24, mat: m.productColors[(i + level * 2) % m.productColors.length], tessellation: 8 });
+    }
+  }
+  b.box({ w: 0.6, h: 0.22, d: 0.02, x: fx, z: fz - front * 0.76, y: 2.02, mat: m.cartazOferta, tile: 0.6, tileV: 0.22 });
+  // Lâmpadas fluorescentes no teto e cartazes de oferta.
+  for (const lz of [inward(2.6), inward(5.6)]) b.box({ w: 1.2, h: 0.05, d: 0.12, x: cx, z: lz, y: FLOOR_H - 0.25, mat: m.fluorescente });
+  for (const ox of [-1.4, 0, 1.4]) b.box({ w: 0.8, h: 0.8, d: 0.02, x: cx + ox, z: bz + front * 0.215, y: 2.0, mat: m.cartazOferta, tile: 0.8 });
+  for (const side of [-1, 1]) {
+    const px = side < 0 ? x0 + 0.37 : x0 + w - 0.37;
+    b.box({ w: 0.6, h: 0.6, d: 0.02, x: px, z: frontZ + front * 0.02, y: 1.3, mat: m.cartazOferta, tile: 0.6 });
+  }
   // Banca de frutas na calçada.
   const standZ = frontZ + front * 1.0;
   b.box({ w: 3.2, h: 0.75, d: 0.9, x: cx, z: standZ, y: 0.06, mat: m.wood, collide: true });

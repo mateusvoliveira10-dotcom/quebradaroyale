@@ -5,6 +5,7 @@ import { buildHouse, HouseInfo, HouseSpec } from './builders/House';
 import { buildMorro } from './builders/Morro';
 import {
   addBackdropHills,
+  addOutskirts,
   addCar,
   addClouds,
   addDumpster,
@@ -100,7 +101,7 @@ export function buildCommunityMap(b: WorldBuilder): CommunityMapResult {
   // Terreno de fora do muro (só visual, até o horizonte).
   const outside = MeshBuilder.CreateGround('outsideGround', { width: 900, height: 900 }, b.scene);
   outside.position.y = -0.05;
-  b.addMesh(outside, m.foliageDark);
+  b.addMesh(outside, m.campoFora);
 
   buildRoads(b, rng, features);
 
@@ -268,6 +269,8 @@ export function buildCommunityMap(b: WorldBuilder): CommunityMapResult {
   buildStreetLife(b, rng, lootSpots);
   addClouds(b, rng, 22);
   addBackdropHills(b, rng, half + 40);
+  // Cidade em volta do muro (só cenário): nada de campo verde liso logo atrás da comunidade.
+  addOutskirts(b, half);
 
   // Por último (já com todos os colisores): árvores extras, bananeiras, mato, trepadeiras no
   // muro e mais caçambas. Gerador próprio dentro: o mapa sorteado acima não muda.
