@@ -31,6 +31,13 @@ export const BOTTOM_CATALOG: readonly GarmentDef<BottomId>[] = [
   { id: 'calca_cargo', name: 'Calça cargo', mesh: 'Calca', end: 0.1 },
   { id: 'calca_jogger', name: 'Calça jogger', mesh: 'Calca', end: 0.1 },
   { id: 'calca_jeans', name: 'Calça jeans', mesh: 'Calca', end: 0.1 },
+  { id: 'bermuda_tactel_degrade', name: 'Bermuda tactel degradê', mesh: 'Bermuda_Longa', end: 0.53 },
+  { id: 'bermuda_tactel_preta', name: 'Bermuda tactel preta neon', mesh: 'Bermuda_Longa', end: 0.53 },
+  { id: 'bermuda_tactel_vermelha', name: 'Bermuda tactel vermelha', mesh: 'Bermuda_Longa', end: 0.53 },
+  { id: 'bermuda_camuflada', name: 'Bermuda cargo camuflada', mesh: 'Bermuda_Longa', end: 0.53 },
+  { id: 'bermuda_moletom', name: 'Bermuda moletom mescla', mesh: 'Bermuda_Curta', end: 0.6 },
+  { id: 'calca_tactel', name: 'Calça tactel com vivo', mesh: 'Calca', end: 0.1 },
+  { id: 'calca_moletom', name: 'Calça moletom mescla', mesh: 'Calca', end: 0.1 },
 ];
 
 export const SHOE_CATALOG: readonly GarmentDef<ShoesId>[] = [
@@ -38,6 +45,11 @@ export const SHOE_CATALOG: readonly GarmentDef<ShoesId>[] = [
   { id: 'tenis_preto', name: 'Tênis preto', mesh: 'Tenis' },
   { id: 'tenis_casual', name: 'Tênis casual', mesh: 'Tenis' },
   { id: 'chuteira', name: 'Chuteira', mesh: 'Tenis' },
+  { id: 'tenis_mola', name: 'Tênis de mola branco/azul', mesh: 'Tenis' },
+  { id: 'tenis_mola_preto', name: 'Tênis de mola preto/laranja', mesh: 'Tenis' },
+  { id: 'tenis_bolha', name: 'Tênis bolha branco/vermelho', mesh: 'Tenis' },
+  { id: 'tenis_curva_preto', name: 'Tênis faixa curva preto', mesh: 'Tenis' },
+  { id: 'tenis_quadra', name: 'Tênis de quadra couro branco', mesh: 'Tenis' },
 ];
 
 export function bottomById(id: string): GarmentDef<BottomId> | undefined {

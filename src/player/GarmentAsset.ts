@@ -30,6 +30,11 @@ export class GarmentAsset {
         asset.templates.set(name, m);
       }
     });
+    // Partes de baixo por baixo de camisa: variante "_sob" com o cós encolhido e cortado.
+    for (const name of BOTTOM_MESHES) {
+      const t = asset.templates.get(name);
+      if (t) asset.templates.set(`${name}${UNDER_SHIRT}`, tuckUnderShirt(t));
+    }
 
     // Um material por peça, a partir do material do corpo (mesmas convenções do glTF,
     // como a orientação do normal map), trocando as texturas e deixando o tecido fosco.
@@ -100,6 +105,45 @@ export class GarmentAsset {
     m.setBoundingInfo(new BoundingInfo(new Vector3(-1, -0.3, -1.1), new Vector3(1, 2, 1.1)));
     return m;
   }
+}
+
+/** Malhas de parte de baixo (sobem até o cós, acima da barra das camisas). */
+const BOTTOM_MESHES = ['Bermuda_Curta', 'Bermuda_Longa', 'Calca'];
+/** Sufixo da variante usada quando há camisa por cima. */
+export const UNDER_SHIRT = '_sob';
+/** Barra das camisas na pose de repouso (jerseys.py: todas terminam em 0,845 m). */
+const SHIRT_HEM = 0.845;
+
+/**
+ * O cós (0,93 m) fica por dentro da camisa, que termina em 0,845 m. As duas malhas ficavam
+ * quase coladas ali e, com o corpo se mexendo, o jeans furava a camisa (manchas azuis na
+ * barra e "piscando" na barriga). A variante sob a camisa encolhe a peça para dentro a
+ * partir da barra e remove o que fica todo escondido acima dela (com folga de 3 cm).
+ */
+function tuckUnderShirt(t: Mesh): Mesh {
+  const m = t.clone(`${t.name}${UNDER_SHIRT}`, null, true, false) as Mesh;
+  m.makeGeometryUnique();
+  m.setEnabled(false);
+  const pos = m.getVerticesData(VertexBuffer.PositionKind)!.slice();
+  const nrm = m.getVerticesData(VertexBuffer.NormalKind)!;
+  for (let i = 0; i < pos.length; i += 3) {
+    const k = Math.min(1, Math.max(0, (pos[i + 1] - (SHIRT_HEM - 0.07)) / 0.05));
+    const d = 0.009 * k * k * (3 - 2 * k);
+    pos[i] -= nrm[i] * d;
+    pos[i + 1] -= nrm[i + 1] * d;
+    pos[i + 2] -= nrm[i + 2] * d;
+  }
+  m.setVerticesData(VertexBuffer.PositionKind, pos, false);
+  const top = SHIRT_HEM + 0.03;
+  const idx = m.getIndices()!;
+  const kept: number[] = [];
+  for (let i = 0; i < idx.length; i += 3) {
+    const a = idx[i], b = idx[i + 1], c = idx[i + 2];
+    if (pos[a * 3 + 1] > top && pos[b * 3 + 1] > top && pos[c * 3 + 1] > top) continue;
+    kept.push(a, b, c);
+  }
+  m.setIndices(kept);
+  return m;
 }
 
 /**

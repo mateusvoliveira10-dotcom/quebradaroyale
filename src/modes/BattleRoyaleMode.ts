@@ -60,6 +60,8 @@ export class BattleRoyaleMode implements GameMode {
         out.push({ name, pos: c, color: '#ff8a1f' });
       } else if (f.kind === 'field') {
         out.push({ name: 'CAMPINHO', pos: c, color: '#2bd46b' });
+      } else if (f.kind === 'mata') {
+        out.push({ name: 'MATA', pos: c, color: '#7bd44b' });
       }
     }
     // O último platô do morro é o cume com a estátua.

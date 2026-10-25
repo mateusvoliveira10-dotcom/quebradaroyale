@@ -1,7 +1,7 @@
 import { Material, Mesh, MeshBuilder, Scene, Vector3, Vector4, VertexBuffer } from '@babylonjs/core';
 import { Materials } from './Materials';
 import { HQ_TILE, OLD_MAP } from './MaterialsHQ';
-import { StaticBatcher } from './StaticBatcher';
+import { BatchOptions, StaticBatcher } from './StaticBatcher';
 import type { WorldModel } from './WorldAssets';
 
 export interface BoxOptions {
@@ -214,9 +214,9 @@ export class WorldBuilder {
   }
 
   /** Malha pronta adicionada ao lote estático. */
-  addMesh(mesh: Mesh, mat: Material): Mesh {
+  addMesh(mesh: Mesh, mat: Material, o: BatchOptions = {}): Mesh {
     mesh.material = mat;
-    this.batch.add(mesh);
+    this.batch.add(mesh, o);
     return mesh;
   }
 

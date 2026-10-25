@@ -1,10 +1,17 @@
 import { Color3, DynamicTexture, FresnelParameters, Scene, StandardMaterial, Texture } from '@babylonjs/core';
+import { shareTint } from './StaticBatcher';
 import { Rng } from '../utils/random';
 import { MaterialsHQ } from './MaterialsHQ';
 
 /** Metadados lidos pelo StaticBatcher ao montar os lotes. */
 export interface MaterialMeta {
   castShadow: boolean;
+  /**
+   * Variação de cor de um material comum (StaticBatcher.shareTint): no lote estático a peça
+   * vai para `tintBase` com a cor nos vértices, e todas as cores viram um lote só.
+   */
+  tintBase?: StandardMaterial;
+  tint?: Color3;
 }
 
 type Ctx = CanvasRenderingContext2D;
@@ -81,6 +88,9 @@ export class Materials {
   /** Mato verde e capim seco (dois lados, sem sombra própria). */
   readonly grass: StandardMaterial;
   readonly grassDry: StandardMaterial;
+  /** Chão da mata (terra escura com folhas) e trilha de terra batida. */
+  readonly chaoMata: StandardMaterial;
+  readonly trilha: StandardMaterial;
   /** Chapa amarela da caçamba (por fora, com ferrugem escorrida) e o fundo encardido. */
   readonly cacamba: StandardMaterial;
   readonly cacambaInner: StandardMaterial;
@@ -108,9 +118,15 @@ export class Materials {
   readonly fluorescente: StandardMaterial;
   readonly cartazOferta: StandardMaterial;
   readonly gondola: StandardMaterial;
-  /** Fachadas das casinhas dos morros do horizonte (janelas, porta e laje), por cor. */
-  readonly bgFacades: StandardMaterial[];
-  readonly bgBrick: StandardMaterial;
+  /**
+   * Fachadas das casinhas do horizonte e do bairro de fora (janelas, porta e laje) num atlas
+   * 4 x 4: uma célula por cor de tinta e a última de tijolo. Um material só: antes eram 13,
+   * e cada um virava um lote por bloco (600 malhas só de casinha ao fundo).
+   */
+  readonly bgAtlas: StandardMaterial;
+  /** Células do atlas: cores de tinta e a de tijolo. */
+  readonly bgPaintCells: number[];
+  readonly bgBrickCell: number;
   /** Chão de fora do muro: terra com mato em escala grande (no lugar do verde chapado). */
   readonly campoFora: StandardMaterial;
   /** Texturas PBR em escala real do setor reconstruído (Fase 4). */
@@ -149,6 +165,8 @@ export class Materials {
     this.sidewalk = this.make('sidewalk', '#ffffff', { tex: sidewalkTex, castShadow: false });
     this.curb = this.make('curb', '#d8d3c8', { tex: concreteTex });
     this.dirt = this.make('dirt', '#ffffff', { tex: dirtTex, castShadow: false });
+    this.chaoMata = this.make('chaoMata', '#ffffff', { tex: this.texture('tex_chaoMata', 512, (ctx, s) => this.drawForestFloor(ctx, s)), castShadow: false });
+    this.trilha = this.make('trilha', '#d2b48a', { tex: dirtTex, castShadow: false });
     this.field = this.make('field', '#d08a55', { tex: dirtTex, castShadow: false });
     this.glass = this.make('glass', '#2b3a52', { spec: 1.1, power: 96 });
     this.glass.emissiveColor = Color3.White();
@@ -303,16 +321,37 @@ export class Materials {
     this.cartazOferta = this.make('cartazOferta', '#ffffff', { emissive: 0.25, tex: this.texture('tex_oferta', 256, (ctx, s) => this.drawOffer(ctx, s)) });
     this.gondola = this.make('gondola', '#dfe3e6', { spec: 0.6, power: 60, tex: noiseTex });
     // Fachadas do horizonte: as cores das tintas sobre um desenho com janelas, porta e laje.
-    const facadeTex = this.texture('tex_bgFacade', 128, (ctx, s) => this.drawBgFacade(ctx, s, false));
-    const brickFacadeTex = this.texture('tex_bgBrick', 128, (ctx, s) => this.drawBgFacade(ctx, s, true));
-    this.bgFacades = paintColors.map((c, i) => this.make(`bgFacade_${i}`, c, { tex: facadeTex }));
-    this.bgBrick = this.make('bgBrick', '#ffffff', { tex: brickFacadeTex });
+    const atlasTex = this.texture('tex_bgAtlas', 512, (ctx) => {
+      const cell = 128;
+      [...paintColors, null].forEach((color, i) => {
+        ctx.save();
+        ctx.translate((i % 4) * cell, Math.floor(i / 4) * cell);
+        ctx.beginPath();
+        ctx.rect(0, 0, cell, cell);
+        ctx.clip();
+        this.drawBgFacade(ctx, cell, color === null);
+        if (color) {
+          // Tinta por cima do reboco branco (multiplica: janelas e sujeira continuam).
+          ctx.globalCompositeOperation = 'multiply';
+          ctx.fillStyle = color;
+          ctx.fillRect(0, cell * 0.04, cell, cell);
+        }
+        ctx.restore();
+      });
+    });
+    this.bgAtlas = this.make('bgAtlas', '#ffffff', { tex: atlasTex, castShadow: false });
+    this.bgPaintCells = paintColors.map((_, i) => i);
+    this.bgBrickCell = paintColors.length;
     // Textura própria (um clone de DynamicTexture nunca fica "pronto" e o chão sumia).
     const foraTex = this.texture('tex_campoFora', 256, (ctx, s) => this.drawDirt(ctx, s));
     foraTex.uScale = 150;
     foraTex.vScale = 150;
     this.campoFora = this.make('campoFora', '#a8a27a', { tex: foraTex, castShadow: false });
     this.hq = new MaterialsHQ(scene);
+    // Variações de cor do mesmo material viram um lote só (cor por vértice).
+    shareTint(this.paints, 'paint_tinta');
+    shareTint(this.hq.reboco, 'hq_reboco_tinta');
+    shareTint(this.hq.portoes, 'hq_portao_tinta');
   }
 
   private make(name: string, hex: string, o: MakeOpts = {}): StandardMaterial {
@@ -688,6 +727,46 @@ export class Materials {
       ctx.stroke();
     }
     this.blotches(ctx, s, 6, 'rgba(0,0,0,0.2)', 8, 20);
+  }
+
+  /** Chão de mata: terra escura e úmida coberta de folhas secas e verdes, gravetos. */
+  private drawForestFloor(ctx: Ctx, s: number): void {
+    ctx.fillStyle = '#4a3a26';
+    ctx.fillRect(0, 0, s, s);
+    this.blotches(ctx, s, 40, 'rgba(30,22,12,0.35)', 20, 70);
+    this.blotches(ctx, s, 25, 'rgba(70,80,40,0.25)', 15, 50);
+    const leaf = (x: number, y: number, len: number, a: number, col: string) => {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(a);
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, len, len * 0.42, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-len, 0);
+      ctx.lineTo(len, 0);
+      ctx.stroke();
+      ctx.restore();
+    };
+    const cols = ['#8a5a2a', '#a8742f', '#6e4a22', '#5b6b2a', '#c08a3a', '#7a3e1e', '#4f5f24'];
+    for (let i = 0; i < 900; i++) {
+      leaf(this.rng.range(0, s), this.rng.range(0, s), this.rng.range(4, 11), this.rng.range(0, Math.PI), cols[Math.floor(this.rng.range(0, cols.length))]);
+    }
+    ctx.strokeStyle = 'rgba(60,40,22,0.9)';
+    for (let i = 0; i < 40; i++) {
+      ctx.lineWidth = this.rng.range(1.5, 3);
+      const x = this.rng.range(0, s);
+      const y = this.rng.range(0, s);
+      const a = this.rng.range(0, Math.PI);
+      const l = this.rng.range(15, 45);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l);
+      ctx.stroke();
+    }
   }
 
   private drawProduct(ctx: Ctx, s: number, name: string, bg: string, fg: string, weight: string): void {

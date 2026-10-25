@@ -8,9 +8,11 @@ export type HairId = 'degrade_baixo' | 'degrade_americano' | 'risquinho' | 'cach
 export type GlassesId = 'nenhum' | GlassesVariantId;
 /** Camisa do catálogo, ou 'none' (sem camisa). */
 export type JerseyChoice = JerseyId | 'none';
-export type AccessoryId = ChainId | 'bone_tras' | 'bone_frente' | 'pulseiras' | 'relogio' | 'mochila';
-export type BottomId = 'bermuda_esportiva' | 'bermuda_jeans' | 'calca_cargo' | 'calca_jogger' | 'calca_jeans';
-export type ShoesId = 'tenis_branco' | 'tenis_preto' | 'tenis_casual' | 'chuteira';
+export type AccessoryId = ChainId | 'bone_tras' | 'bone_frente' | 'bone_aba_reta' | 'pulseiras' | 'relogio' | 'mochila';
+export type BottomId = 'bermuda_esportiva' | 'bermuda_jeans' | 'calca_cargo' | 'calca_jogger' | 'calca_jeans'
+  | 'bermuda_tactel_degrade' | 'bermuda_tactel_preta' | 'bermuda_tactel_vermelha' | 'bermuda_camuflada' | 'bermuda_moletom' | 'calca_tactel' | 'calca_moletom';
+export type ShoesId = 'tenis_branco' | 'tenis_preto' | 'tenis_casual' | 'chuteira'
+  | 'tenis_mola' | 'tenis_mola_preto' | 'tenis_bolha' | 'tenis_curva_preto' | 'tenis_quadra';
 
 export interface Appearance {
   hair: HairId;
@@ -43,8 +45,9 @@ export const JERSEY_OPTIONS: Option<JerseyChoice>[] = [...JERSEY_CATALOG.map((j)
 
 export const ACCESSORY_OPTIONS: Option<AccessoryId>[] = [
   ...CHAIN_CATALOG.map((c) => ({ id: c.id, name: c.name })),
-  { id: 'bone_tras', name: 'Boné para trás' },
-  { id: 'bone_frente', name: 'Boné para frente' },
+  { id: 'bone_frente', name: 'Boné aba curva (frente)' },
+  { id: 'bone_aba_reta', name: 'Boné aba reta (frente)' },
+  { id: 'bone_tras', name: 'Boné aba reta (para trás)' },
   { id: 'pulseiras', name: 'Pulseiras' },
   { id: 'relogio', name: 'Relógio' },
   { id: 'mochila', name: 'Mochila' },
@@ -56,6 +59,13 @@ export const BOTTOM_OPTIONS: Option<BottomId>[] = [
   { id: 'calca_cargo', name: 'Calça cargo' },
   { id: 'calca_jogger', name: 'Calça jogger' },
   { id: 'calca_jeans', name: 'Calça jeans' },
+  { id: 'bermuda_tactel_degrade', name: 'Bermuda tactel degradê' },
+  { id: 'bermuda_tactel_preta', name: 'Bermuda tactel preta neon' },
+  { id: 'bermuda_tactel_vermelha', name: 'Bermuda tactel vermelha' },
+  { id: 'bermuda_camuflada', name: 'Bermuda cargo camuflada' },
+  { id: 'bermuda_moletom', name: 'Bermuda moletom mescla' },
+  { id: 'calca_tactel', name: 'Calça tactel com vivo' },
+  { id: 'calca_moletom', name: 'Calça moletom mescla' },
 ];
 
 export const SHOES_OPTIONS: Option<ShoesId>[] = [
@@ -63,11 +73,16 @@ export const SHOES_OPTIONS: Option<ShoesId>[] = [
   { id: 'tenis_preto', name: 'Tênis preto' },
   { id: 'tenis_casual', name: 'Tênis casual' },
   { id: 'chuteira', name: 'Chuteira' },
+  { id: 'tenis_mola', name: 'Tênis de mola branco/azul' },
+  { id: 'tenis_mola_preto', name: 'Tênis de mola preto/laranja' },
+  { id: 'tenis_bolha', name: 'Tênis bolha branco/vermelho' },
+  { id: 'tenis_curva_preto', name: 'Tênis faixa curva preto' },
+  { id: 'tenis_quadra', name: 'Tênis de quadra couro branco' },
 ];
 
 /** Acessórios que não podem ser usados juntos. */
 const EXCLUSIVE: AccessoryId[][] = [
-  ['bone_tras', 'bone_frente'],
+  ['bone_tras', 'bone_frente', 'bone_aba_reta'],
   CHAIN_CATALOG.map((c) => c.id),
 ];
 
@@ -138,7 +153,7 @@ export function saveAppearance(app: Appearance): void {
 export function randomAppearance(rng: Rng, jersey?: JerseyId): Appearance {
   const acc: AccessoryId[] = [];
   if (rng.chance(0.5)) acc.push(rng.pick(CHAIN_CATALOG).id);
-  if (rng.chance(0.4)) acc.push(rng.pick(['bone_tras', 'bone_frente'] as const));
+  if (rng.chance(0.4)) acc.push(rng.pick(['bone_tras', 'bone_frente', 'bone_aba_reta'] as const));
   if (rng.chance(0.3)) acc.push('pulseiras');
   if (rng.chance(0.3)) acc.push('relogio');
   if (rng.chance(0.25)) acc.push('mochila');

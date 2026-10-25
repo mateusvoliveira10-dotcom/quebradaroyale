@@ -3,6 +3,7 @@ import { WORLD } from '../core/config';
 import { Rng } from '../utils/random';
 import { buildHouse, HouseInfo, HouseSpec } from './builders/House';
 import { buildMorro } from './builders/Morro';
+import { buildMata } from './builders/Mata';
 import {
   addBackdropHills,
   addOutskirts,
@@ -31,7 +32,7 @@ export interface LootSpot {
   tier: LootTier;
 }
 
-export type FeatureKind = 'house' | 'shop' | 'terrace' | 'field' | 'road' | 'sidewalk' | 'beco';
+export type FeatureKind = 'house' | 'shop' | 'terrace' | 'field' | 'road' | 'sidewalk' | 'beco' | 'mata';
 
 export interface MapFeature {
   x0: number;
@@ -272,12 +273,18 @@ export function buildCommunityMap(b: WorldBuilder): CommunityMapResult {
   // Cidade em volta do muro (só cenário): nada de campo verde liso logo atrás da comunidade.
   addOutskirts(b, half);
 
+  // Mata com trilhas no terreno vazio ao lado do campinho (gerador próprio).
+  const mataRect = { x0: 60, x1: half - 2.5, z0: -31, z1: -9.5 };
+  const mata = buildMata(b, mataRect);
+  features.push({ ...mataRect, kind: 'mata' });
+  for (const l of mata.loot) loot(l.pos, l.tier);
+
   // Por último (já com todos os colisores): árvores extras, bananeiras, mato, trepadeiras no
   // muro e mais caçambas. Gerador próprio dentro: o mapa sorteado acima não muda.
   scatterVegetation(b, {
     half,
     terraces: morro.terraces,
-    blocked: features.filter((f) => f.kind !== 'terrace'),
+    blocked: [...features.filter((f) => f.kind !== 'terrace' && f.kind !== 'mata'), ...mata.clear],
     loot: lootSpots.map((l) => l.pos),
     becos: features.filter((f) => f.kind === 'beco' && f.x1 - f.x0 > f.z1 - f.z0),
   });

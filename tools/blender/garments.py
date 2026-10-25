@@ -360,6 +360,25 @@ def paint_bottom(spec, pos, nrm, cov):
     col[:] = hexc(spec['color'])
     seam = np.zeros(z.shape, bool)            # costuras (viram sulco no normal map)
     base = hexc(spec['color'])
+    if spec.get('gradient'):
+        # Tactel degradê: cor do cós até a barra.
+        t = smoothstep(WAIST_Z - 0.05, end + 0.03, z)[..., None]
+        col = hexc(spec['gradient'][0])[None, None] * (1 - t) + hexc(spec['gradient'][1])[None, None] * t
+        col = col.astype(np.float32)
+    if spec.get('camo'):
+        # Camuflado de manchas (três tons sobre a cor base).
+        n1 = np.sin(x * 61 + np.sin(z * 37) * 2.1) + np.sin(z * 53 + np.sin(y * 41) * 1.7) + np.sin(y * 47 - x * 29)
+        n2 = np.sin(x * 83 - z * 71 + 1.3) + np.sin(y * 67 + z * 31 + 0.7)
+        for k, (thr, nn) in enumerate(((0.9, n1), (1.1, n2), (2.0, n1 + n2 * 0.5))):
+            col[nn > thr] = hexc(spec['camo'][k])
+    if spec.get('heather'):
+        # Moletom mesclado: pontinhos claros e escuros.
+        hn = np.sin(x * 2300 + z * 1700) * np.sin(y * 1900 - z * 2100) * np.sin(x * 1300 + y * 900)
+        col *= (0.9 + 0.2 * (hn > 0.25) - 0.08 * (hn < -0.4))[..., None]
+    if spec.get('fabric') == 'tactel':
+        # Tactel: brilho leve e amassado do nylon.
+        wr = np.sin(x * 140 + z * 90) * np.sin(y * 120 - z * 160) + 0.5 * np.sin(z * 260 + x * 70)
+        col *= (0.94 + 0.08 * wr)[..., None]
     if spec.get('fade'):
         # Jeans gasto: mais claro na frente da coxa.
         k = smoothstep(0.25, 1.2, np.cos(th - 1.2)) * smoothstep(0.45, 0.62, z) * smoothstep(0.80, 0.66, z)
@@ -393,10 +412,26 @@ def paint_bottom(spec, pos, nrm, cov):
         col[st] = hexc(spec['stripe'])
         if spec.get('stripe_double'):
             col[ang_near(th, 0.0, sw * 0.35) & st] = hexc(spec['color'])
+    # Painel lateral de tactel com vivos (estilo bermudas de surf/streetwear, sem marca).
+    if spec.get('panel'):
+        pw = spec.get('panel_w', 0.16)
+        body_z = (z < WAIST_Z - 0.035) & ~hem
+        col[ang_near(th, 0.0, pw) & body_z] = hexc(spec['panel'])
+        if spec.get('piping'):
+            col[body_z & (np.abs(np.abs((th + math.pi) % (2 * math.pi) - math.pi) - pw) < 0.022)] = hexc(spec['piping'])
+    # Emblema genérico bordado na coxa esquerda (círculo com onda, sem logotipo real).
+    if spec.get('patch'):
+        zc = end + (0.07 if end > 0.3 else 0.52)
+        d2 = ((th - 0.95) * 0.09) ** 2 + (z - zc) ** 2
+        em = (side > 0) & (d2 < 0.017 ** 2)
+        col[em] = hexc(spec['patch'][0])
+        wave = em & (np.abs((z - zc) - 0.006 * np.sin((th - 0.95) * 0.09 * 300)) < 0.0035)
+        col[wave] = hexc(spec['patch'][1])
+        seam |= (side > 0) & (np.abs(np.sqrt(d2) - 0.017) < 0.0012)
     # Costuras laterais e entreperna (abaixo da virilha).
     below = z < 0.70
     seam |= below & ang_near(th, math.pi, 0.012)
-    seam |= ang_near(th, 0.0, 0.012) & ~hem & (z < WAIST_Z - 0.035) & (not spec.get('stripe'))
+    seam |= ang_near(th, 0.0, 0.012) & ~hem & (z < WAIST_Z - 0.035) & (not spec.get('stripe')) & (not spec.get('panel'))
     # Braguilha (frente, centro).
     if spec.get('fly'):
         fl = (y < 0) & (z > 0.76) & (z < WAIST_Z - 0.035)
@@ -452,9 +487,19 @@ def paint_shoe(spec, pos, nrm, cov):
     # Sola e entressola.
     sole = z < 0.024
     col[sole] = hexc(spec['sole'])
-    mid = (z >= 0.024) & (z < 0.036)
+    mid_top = 0.05 if spec.get('tall_mid') else 0.036
+    mid = (z >= 0.024) & (z < mid_top)
     col[mid] = hexc(spec.get('midsole', spec['sole']))
-    seam |= np.abs(z - 0.036) < 0.0015
+    seam |= np.abs(z - mid_top) < 0.0015
+    if spec.get('wave'):
+        # Placa ondulada na entressola (tênis de corrida "de mola").
+        wz = 0.024 + (mid_top - 0.024) * (0.5 + 0.32 * np.sin(a * 70))
+        col[mid & (np.abs(z - wz) < 0.0035)] = hexc(spec['wave'])
+    if spec.get('air'):
+        # Janela de amortecimento no calcanhar (bolha transparente).
+        win_a = mid & (a > -0.02) & (a < 0.06) & (np.abs(l) > 0.02)
+        col[win_a & (z > 0.027) & (z < mid_top - 0.004)] = hexc(spec['air'])
+        seam |= win_a & ((np.abs(z - 0.027) < 0.0012) | (np.abs(z - (mid_top - 0.004)) < 0.0012))
     # Biqueira.
     toe = (a > 0.19) & (z < 0.07) & ~sole & ~mid
     col[toe] = hexc(spec.get('toe', spec['upper']))
@@ -463,8 +508,23 @@ def paint_shoe(spec, pos, nrm, cov):
     heel = (a < -0.015) & (z > 0.036) & (z < 0.10)
     col[heel] = hexc(spec.get('heel', spec['upper']))
     # Faixa lateral (desenho próprio, genérico): sobe da sola para trás.
-    band = (z > 0.04 + 0.25 * np.clip(a - 0.02, 0, 1)) & (z < 0.06 + 0.25 * np.clip(a - 0.02, 0, 1)) & (a > 0.0) & (a < 0.15) & (np.abs(l) > 0.025)
+    if spec.get('curve'):
+        # Faixa curva própria: fina no calcanhar, larga no meio do pé, descendo até a sola.
+        t = np.clip((a + 0.02) / 0.2, 0, 1)
+        cz = 0.085 - 0.06 * t + 0.035 * t * t
+        wdt = 0.004 + 0.012 * np.sin(t * math.pi)
+        band = (np.abs(z - cz) < wdt) & (a > -0.02) & (a < 0.18) & (np.abs(l) > 0.022) & (z > mid_top)
+    elif spec.get('no_band'):
+        band = np.zeros(z.shape, bool)
+    else:
+        band = (z > 0.04 + 0.25 * np.clip(a - 0.02, 0, 1)) & (z < 0.06 + 0.25 * np.clip(a - 0.02, 0, 1)) & (a > 0.0) & (a < 0.15) & (np.abs(l) > 0.025)
     col[band] = hexc(spec['accent'])
+    if spec.get('emblem'):
+        # Emblema bordado pequeno na lateral, perto do calcanhar.
+        col[((a - 0.02) ** 2 + (z - 0.075) ** 2 < 0.009 ** 2) & (np.abs(l) > 0.025)] = hexc(spec['emblem'])
+    if spec.get('perf'):
+        # Furinhos de ventilação na biqueira (tênis de couro de quadra).
+        col[(a > 0.2) & (z > 0.045) & (np.sin(a * 900) * np.sin(l * 900) > 0.85)] *= 0.7
     # Cadarço: no peito do pé, voltado para cima.
     lace_area = (a > 0.07) & (a < 0.19) & (np.abs(l) < 0.022) & (up > 0.35) & (z > 0.05)
     col[lace_area] = np.minimum(hexc(spec['upper']) * 0.85, 1)
@@ -490,12 +550,26 @@ BOTTOMS = [
     ('calca_cargo', {'mesh': 'Calca', 'color': '#6b6a45', 'fabric': 'canvas', 'loops': True, 'fly': True, 'pockets': True, 'cargo': True, 'hem': 0.015}),
     ('calca_jogger', {'mesh': 'Calca', 'color': '#3a3d45', 'stripe': '#f4f4f0', 'stripe_w': 0.07, 'drawstring': True, 'hem': 0.06, 'hem_k': 0.85, 'rib': True, 'fabric': 'knit'}),
     ('calca_jeans', {'mesh': 'Calca', 'color': '#3d5f94', 'fabric': 'denim', 'loops': True, 'fly': True, 'pockets': True, 'hem': 0.015, 'fade': True}),
+    # Tactel e moletom no estilo das marcas de surf e streetwear (desenhos próprios, sem marca).
+    ('bermuda_tactel_degrade', {'mesh': 'Bermuda_Longa', 'color': '#123a7a', 'gradient': ('#0e2a63', '#19a6d8'), 'panel': '#f4f4f0', 'piping': '#ffd21f', 'drawstring': True, 'fabric': 'tactel', 'hem': 0.02, 'hem_k': 1.0, 'patch': ('#f4f4f0', '#0e2a63')}),
+    ('bermuda_tactel_preta', {'mesh': 'Bermuda_Longa', 'color': '#141418', 'panel': '#1f1f24', 'piping': '#b8ff2a', 'panel_w': 0.12, 'drawstring': True, 'fabric': 'tactel', 'hem': 0.02, 'hem_k': 1.0, 'patch': ('#b8ff2a', '#141418')}),
+    ('bermuda_tactel_vermelha', {'mesh': 'Bermuda_Longa', 'color': '#c8161e', 'gradient': ('#8e0d14', '#ef3b2c'), 'panel': '#141418', 'piping': '#f4f4f0', 'drawstring': True, 'fabric': 'tactel', 'hem': 0.02, 'hem_k': 1.0, 'patch': ('#f4f4f0', '#c8161e')}),
+    ('bermuda_camuflada', {'mesh': 'Bermuda_Longa', 'color': '#5d6340', 'camo': ('#3c412a', '#7c7550', '#2a2a22'), 'fabric': 'canvas', 'loops': True, 'fly': True, 'pockets': True, 'cargo': True, 'hem': 0.03}),
+    ('bermuda_moletom', {'mesh': 'Bermuda_Curta', 'color': '#8d9097', 'heather': True, 'drawstring': True, 'hem': 0.025, 'hem_k': 0.9, 'fabric': 'knit', 'patch': ('#1c1d22', '#8d9097')}),
+    ('calca_tactel', {'mesh': 'Calca', 'color': '#16171c', 'panel': '#1d3fc2', 'piping': '#f4f4f0', 'panel_w': 0.1, 'drawstring': True, 'fabric': 'tactel', 'hem': 0.04, 'hem_k': 0.9, 'rib': True, 'patch': ('#f4f4f0', '#16171c')}),
+    ('calca_moletom', {'mesh': 'Calca', 'color': '#9a9ca2', 'heather': True, 'drawstring': True, 'hem': 0.06, 'hem_k': 0.85, 'rib': True, 'fabric': 'knit'}),
 ]
 SHOES = [
     ('tenis_branco', {'upper': '#f4f4f2', 'sole': '#f7f7f7', 'midsole': '#1aa05a', 'accent': '#1aa05a', 'heel': '#1aa05a', 'laces': '#ffffff'}),
     ('tenis_preto', {'upper': '#1c1d22', 'sole': '#f2f2f2', 'accent': '#e8322b', 'heel': '#2a2b31', 'laces': '#1c1d22', 'toe': '#26272d'}),
     ('tenis_casual', {'upper': '#c9b48c', 'sole': '#f2ede2', 'accent': '#a8936b', 'heel': '#7a5a3a', 'laces': '#7a5a3a', 'suede': True}),
     ('chuteira', {'upper': '#15161a', 'sole': '#d8ff2a', 'midsole': '#15161a', 'accent': '#d8ff2a', 'laces': '#15161a', 'studs': True}),
+    # Corrida "de mola", bolha no calcanhar, faixa curva e couro de quadra (desenhos próprios, sem marca).
+    ('tenis_mola', {'upper': '#f2f3f5', 'sole': '#1c1d22', 'midsole': '#f7f7f7', 'tall_mid': True, 'wave': '#1d4fd6', 'accent': '#1d4fd6', 'heel': '#c9ced6', 'toe': '#dfe3e8', 'laces': '#f4f4f4'}),
+    ('tenis_mola_preto', {'upper': '#1c1d22', 'sole': '#111114', 'midsole': '#2a2b31', 'tall_mid': True, 'wave': '#ff6a1f', 'accent': '#ff6a1f', 'heel': '#2a2b31', 'laces': '#1c1d22'}),
+    ('tenis_bolha', {'upper': '#f4f4f2', 'sole': '#c8161e', 'midsole': '#f7f7f7', 'tall_mid': True, 'air': '#cfe6f5', 'curve': True, 'accent': '#c8161e', 'heel': '#141418', 'toe': '#e9e9e6', 'laces': '#ffffff'}),
+    ('tenis_curva_preto', {'upper': '#141418', 'sole': '#f2f2f2', 'midsole': '#f7f7f7', 'curve': True, 'accent': '#f4f4f2', 'heel': '#141418', 'laces': '#141418'}),
+    ('tenis_quadra', {'upper': '#f7f7f5', 'sole': '#f2efe6', 'no_band': True, 'accent': '#f7f7f5', 'emblem': '#1f8f4a', 'heel': '#1f8f4a', 'perf': True, 'laces': '#ffffff', 'collar': '#f7f7f5'}),
 ]
 
 raster = {}

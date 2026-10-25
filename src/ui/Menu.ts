@@ -274,6 +274,7 @@ export class Menu {
         const colors: Partial<Record<AccessoryId, string[]>> = {
           bone_tras: ['#e8322b', '#16100c'],
           bone_frente: ['#2457c5', '#16100c'],
+          bone_aba_reta: ['#16100c', '#ffd21f'],
           pulseiras: ['#ffc23a', '#16100c', '#1fa64a'],
           relogio: ['#202020', '#ffc23a'],
           mochila: ['#2d3340'],

@@ -70,6 +70,7 @@ export class Environment {
     this.shadows.normalBias = 0.025;
     this.shadows.darkness = 0.25;
     this.shadows.transparencyShadow = false;
+    this.cullShadowCasters();
 
     this.glow = new GlowLayer('glow', scene, { mainTextureRatio: 0.5, blurKernelSize: 32 });
     this.glow.intensity = 0.9;
@@ -142,12 +143,55 @@ export class Environment {
     const p = this.pipeline;
     if (!p) return;
     p.depthOfFieldEnabled = distance !== null;
-    if (distance === null) return;
+    if (distance === null) {
+      // O desfoque liga um renderizador de profundidade que desenha a cena inteira de novo a
+      // cada quadro (~900 draw calls a mais) e não é desligado junto: na partida ele sobrava.
+      for (const cam of p.cameras) this.scene.disableDepthRenderer(cam);
+      return;
+    }
     p.depthOfFieldBlurLevel = DepthOfFieldEffectBlurLevel.Medium;
     // unidades em milímetros
     p.depthOfField.focusDistance = distance * 1000;
     p.depthOfField.focalLength = 85;
     p.depthOfField.fStop = 1.6;
+  }
+
+  /**
+   * O mapa de sombra do Babylon não recorta pelo volume da luz: desenhava todos os lotes
+   * que projetam sombra (~1.000 draw calls por quadro, inclusive do outro lado do mapa).
+   * Aqui só entram os que cruzam a coluna de sombra em volta do jogador (distância medida
+   * no plano perpendicular ao sol, com o raio da malha). Personagens e peças que se mexem
+   * entram sempre (são poucos).
+   */
+  private cullShadowCasters(): void {
+    const sm = this.shadows.getShadowMap();
+    if (!sm) return;
+    const out: Mesh[] = [];
+    const focus = new Vector3();
+    const v = new Vector3();
+    const d = this.sunDir;
+    // Metade da diagonal do quadrado de sombra (frustum ortográfico de 80 m) com folga.
+    const reach = (this.sun.shadowFrustumSize / 2) * 1.45;
+    sm.getCustomRenderList = (_pass, list, len) => {
+      if (!list) return list;
+      focus.copyFrom(this.sun.position).addInPlace(d.scale(150));
+      out.length = 0;
+      for (let i = 0; i < len; i++) {
+        const m = list[i] as Mesh;
+        if (!m.isWorldMatrixFrozen) {
+          out.push(m);
+          continue;
+        }
+        const s = m.getBoundingInfo().boundingSphere;
+        s.centerWorld.subtractToRef(focus, v);
+        const along = Vector3.Dot(v, d);
+        const lx = v.x - d.x * along;
+        const ly = v.y - d.y * along;
+        const lz = v.z - d.z * along;
+        if (Math.sqrt(lx * lx + ly * ly + lz * lz) - s.radiusWorld < reach) out.push(m);
+      }
+      return out as never;
+    };
   }
 
   /** Mantém o volume de sombra centrado no jogador e o sol na direção certa. */

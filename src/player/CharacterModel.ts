@@ -1,5 +1,6 @@
 import {
   Color3,
+  DynamicTexture,
   FresnelParameters,
   Matrix,
   Mesh,
@@ -23,10 +24,99 @@ import { JERSEY_SHARED, jerseyById } from '../customization/jerseys';
 import { clamp, damp } from '../utils/random';
 import { CharacterAsset, CharacterInstance, Clip, CLIP_FPS, ClipName } from './CharacterAsset';
 import { clothingKey, clothingMaterial } from './ClothingMaterial';
-import { GarmentAsset } from './GarmentAsset';
+import { GarmentAsset, UNDER_SHIRT } from './GarmentAsset';
 import { glassesMaterials, studioMaterial } from './GlassesMaterial';
 
 const OUTLINE = Color3.FromHexString('#1a1218');
+
+const capTexCache = new Map<string, DynamicTexture>();
+
+/**
+ * Tecido do boné: sarja com trama, costuras dos 6 gomos e ilhoses (copa) ou pespontos
+ * paralelos à borda (aba). Na copa, u = volta em torno da cabeça e v = da base ao topo.
+ */
+/** Emblema bordado genérico: círculo com uma onda (sem logotipo de marca). */
+function emblemTexture(scene: Scene, fg: string, bg: string): DynamicTexture {
+  const key = `${scene.uid}:emblema:${fg}:${bg}`;
+  const hit = capTexCache.get(key);
+  if (hit) return hit;
+  const s = 128;
+  const t = new DynamicTexture(`cap_emblema_${fg}`, { width: s, height: s }, scene, true);
+  const ctx = t.getContext() as CanvasRenderingContext2D;
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, s, s);
+  ctx.fillStyle = fg;
+  ctx.beginPath();
+  ctx.arc(s / 2, s / 2, s * 0.46, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = bg;
+  ctx.lineWidth = s * 0.09;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  for (let i = 0; i <= 20; i++) {
+    const x = s * 0.2 + (s * 0.6 * i) / 20;
+    const y = s / 2 + Math.sin((i / 20) * Math.PI * 2) * s * 0.12;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  t.update(true);
+  capTexCache.set(key, t);
+  return t;
+}
+
+function capTexture(scene: Scene, part: 'copa' | 'aba', base: string, trim: string, brim: boolean): DynamicTexture {
+  const key = `${scene.uid}:${part}:${base}:${trim}`;
+  const hit = capTexCache.get(key);
+  if (hit) return hit;
+  const s = 256;
+  const t = new DynamicTexture(`cap_${part}_${base}`, { width: s, height: s }, scene, true);
+  const ctx = t.getContext() as CanvasRenderingContext2D;
+  ctx.fillStyle = base;
+  ctx.fillRect(0, 0, s, s);
+  // Trama de sarja (diagonais finas claras/escuras).
+  for (let i = -s; i < s; i += 3) {
+    ctx.strokeStyle = i % 2 ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.07)';
+    ctx.beginPath();
+    ctx.moveTo(i, 0);
+    ctx.lineTo(i + s, s);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+  ctx.setLineDash([4, 3]);
+  ctx.lineWidth = 1.5;
+  if (!brim) {
+    // Costuras dos gomos (duas linhas de pesponto de cada lado) e ilhoses perto do topo.
+    for (let k = 0; k < 6; k++) {
+      const u = (k / 6) * s;
+      for (const d of [-3, 3]) {
+        ctx.beginPath();
+        ctx.moveTo(u + d, 0);
+        ctx.lineTo(u + d, s);
+        ctx.stroke();
+      }
+    }
+    // Sombra suave perto da base (dobra da faixa interna).
+    const g = ctx.createLinearGradient(0, s, 0, s * 0.85);
+    g.addColorStop(0, 'rgba(0,0,0,0.25)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, s * 0.85, s, s * 0.15);
+  } else {
+    // Pespontos paralelos à borda da aba (v = do encaixe até a borda).
+    for (const v of [0.35, 0.5, 0.65, 0.8, 0.93]) {
+      ctx.beginPath();
+      ctx.moveTo(0, v * s);
+      ctx.lineTo(s, v * s);
+      ctx.stroke();
+    }
+  }
+  ctx.setLineDash([]);
+  t.update(true);
+  t.anisotropicFilteringLevel = 4;
+  capTexCache.set(key, t);
+  return t;
+}
 
 export type AnimMode = 'normal' | 'climb' | 'vault' | 'freefall' | 'parachute' | 'plane' | 'dead';
 export type HoldStyle = 'pistol' | 'rifle' | null;
@@ -127,6 +217,8 @@ export class CharacterModel {
   private shadowGen: ShadowGenerator | null = null;
   private outlineOn = true;
   private lodLevel: LodLevel = 0;
+  /** Nó onde worldOf para de subir durante a IK (ver solveSupportArm). */
+  private ikRoot: TransformNode | null = null;
   private lodNear = true;
   private shadowsOn = true;
   private building: Group | null = null;
@@ -272,7 +364,9 @@ export class CharacterModel {
   /** Matriz de mundo atualizada de um nó (recalcula a cadeia de pais). */
   private worldOf(node: TransformNode): Matrix {
     const chain: TransformNode[] = [];
-    for (let n: Node | null = node; n; n = n.parent) if (n instanceof TransformNode) chain.unshift(n);
+    // Durante a IK o esqueleto (e tudo acima dele) não muda: a cadeia para nele, que já foi
+    // calculado no começo (eram ~110 recálculos da hierarquia inteira por personagem).
+    for (let n: Node | null = node; n && n !== this.ikRoot; n = n.parent) if (n instanceof TransformNode) chain.unshift(n);
     for (const n of chain) n.computeWorldMatrix(true);
     return node.getWorldMatrix();
   }
@@ -379,9 +473,11 @@ export class CharacterModel {
       const j = app.jersey === 'none' ? undefined : jerseyById(app.jersey);
       this.applyGarment('top', j ? JERSEY_SHARED.meshName[j.collar] : null, j?.id ?? null);
     }
-    if (first || prev.bottom !== app.bottom) {
+    // Com camisa, a parte de baixo usa a variante encolhida no cós (não fura a barra).
+    if (first || prev.bottom !== app.bottom || (prev.jersey === 'none') !== (app.jersey === 'none')) {
       const b = bottomById(app.bottom);
-      this.applyGarment('bottom', b?.mesh ?? null, b?.id ?? null);
+      const mesh = b && app.jersey !== 'none' ? `${b.mesh}${UNDER_SHIRT}` : b?.mesh;
+      this.applyGarment('bottom', mesh ?? null, b?.id ?? null);
     }
     if (first || prev.shoes !== app.shoes) {
       const s = shoeById(app.shoes);
@@ -442,7 +538,7 @@ export class CharacterModel {
    */
   private buildHair(): void {
     const id = this.appearance.hair;
-    const capOn = this.appearance.accessories.includes('bone_tras') || this.appearance.accessories.includes('bone_frente');
+    const capOn = this.appearance.accessories.some((a) => a.startsWith('bone_'));
     const asset = GarmentAsset.current;
     if (capOn || !asset) return;
     const m = asset.create(this.inst, HAIR_MESH[id]);
@@ -499,14 +595,7 @@ export class CharacterModel {
         this.details.add(m);
       }
     }
-    if (has('bone_tras') || has('bone_frente')) {
-      const back = has('bone_tras');
-      const crown = this.mat(`cap_${jersey.base}`, jersey.base, { spec: 0.15, rim: '#ffffff', rimStrength: 0.2 });
-      const brimMat = this.mat(`capBrim_${jersey.trim}`, jersey.trim, { spec: 0.15 });
-      this.add(MeshBuilder.CreateSphere('capDome', { diameter: 0.29, segments: 20, slice: 0.5 }, s2), crown, this.headMount, { y: 0.15, sx: 0.97, sy: 0.9, sz: 1.04, rx: back ? 0.1 : -0.1 });
-      this.add(MeshBuilder.CreateCylinder('capBrim', { diameter: 0.2, height: 0.012, tessellation: 20 }, s2), brimMat, this.headMount, { y: back ? 0.165 : 0.172, z: back ? -0.17 : 0.17, sz: 0.85, rx: back ? -0.12 : 0.1 });
-      this.add(MeshBuilder.CreateSphere('capButton', { diameter: 0.025, segments: 8 }, s2), brimMat, this.headMount, { y: 0.28 }, false, true);
-    }
+    if (has('bone_tras') || has('bone_frente') || has('bone_aba_reta')) this.buildCap(has('bone_frente') ? 'curva' : 'reta', has('bone_tras'), jersey);
     if (has('pulseiras')) {
       const cols = ['#ffc23a', '#16100c', '#1fa64a'];
       cols.forEach((c, i) => {
@@ -536,6 +625,66 @@ export class CharacterModel {
   }
 
   // ------------------------------------------------------------------ helpers
+
+  /**
+   * Boné de 6 gomos: copa com costuras, ilhoses e botão, faixa interna, aba com pespontos e
+   * forro de baixo, e emblema bordado genérico na frente (sem logotipo de marca). Aba curva
+   * (estilo "dad cap" de grife esportiva) ou reta (snapback); `back` gira o boné para trás.
+   */
+  private buildCap(style: 'curva' | 'reta', back: boolean, jersey: { base: string; trim: string }): void {
+    const s2 = this.scene;
+    const reta = style === 'reta';
+    const crownTex = capTexture(s2, 'copa', jersey.base, jersey.trim, false);
+    const brimTex = capTexture(s2, 'aba', jersey.base, jersey.trim, true);
+    const crown = this.mat(`capCrown_${jersey.base}_${jersey.trim}`, '#ffffff', { spec: 0.12, power: 20, tex: crownTex });
+    const brim = this.mat(`capBrimTop_${jersey.base}_${jersey.trim}`, '#ffffff', { spec: 0.12, power: 20, tex: brimTex });
+    const under = this.mat(reta ? 'capUnder_reta' : 'capUnder_curva', reta ? '#2b3a2c' : '#3a3c42', { spec: 0.05 });
+    // Raiz vazia: gira o boné inteiro (para trás) sem deixar nó solto quando ele sai.
+    const rootMesh = this.add(new Mesh('capRoot', s2), crown, this.headMount, { y: 0.143, ry: back ? Math.PI : 0 }, false);
+    const sx = 0.97;
+    const sz = 1.04;
+    const sy = reta ? 0.98 : 0.88;
+    this.add(MeshBuilder.CreateSphere('capCrown', { diameter: 0.3, segments: 24, slice: 0.5 }, s2), crown, rootMesh, { sx, sy, sz, rx: -0.1 });
+    this.add(MeshBuilder.CreateTorus('capBand', { diameter: 0.285, thickness: 0.012, tessellation: 32 }, s2), under, rootMesh, { y: 0.004, sx, sz, rx: -0.1 }, false, true);
+    this.add(MeshBuilder.CreateSphere('capButton', { diameter: 0.024, segments: 8 }, s2), crown, rootMesh, { y: 0.29 * 0.5 * sy - 0.004, z: -0.013 }, false, true);
+    // Emblema bordado na frente e ilhoses nos gomos, assentados na superfície da copa
+    // (filhos da copa: herdam a mesma escala e inclinação).
+    const crownMesh = this.groups.acc[this.groups.acc.length - 3];
+    const onCrown = (mesh: Mesh, mat: StandardMaterial, elev: number, yaw: number) =>
+      this.add(mesh, mat, crownMesh, {
+        x: 0.157 * Math.cos(elev) * Math.sin(yaw),
+        y: 0.157 * Math.sin(elev),
+        z: 0.157 * Math.cos(elev) * Math.cos(yaw),
+        rx: -elev,
+        ry: yaw,
+      }, false, true);
+    onCrown(MeshBuilder.CreateDisc('capEmblem', { radius: 0.03, tessellation: 24, sideOrientation: Mesh.DOUBLESIDE }, s2), this.mat(`capEmblem_${jersey.trim}_${jersey.base}`, '#ffffff', { spec: 0.3, tex: emblemTexture(s2, jersey.trim, jersey.base) }), reta ? 0.5 : 0.45, 0);
+    for (let k = 0; k < 6; k++) onCrown(MeshBuilder.CreateDisc('capEyelet', { radius: 0.0045, tessellation: 8, sideOrientation: Mesh.DOUBLESIDE }, s2), under, 1.0, (k + 0.5) * (Math.PI / 3));
+    // Aba: fileiras do encaixe na copa até a borda; a curva desce nas laterais.
+    const rows: Vector3[][] = [];
+    const len = reta ? 0.092 : 0.088;
+    const span = 1.0;
+    for (let r = 0; r <= 4; r++) {
+      const k = r / 4;
+      const row: Vector3[] = [];
+      for (let i = 0; i <= 24; i++) {
+        const phi = -span + (2 * span * i) / 24;
+        const l = len * Math.pow(Math.max(0.02, Math.cos(phi * 1.35)), 0.7) * k;
+        const x = (0.146 + l) * Math.sin(phi);
+        const z = (0.156 + l) * Math.cos(phi);
+        const droop = reta ? 0 : -0.04 * Math.pow(Math.sin(phi), 2) * k - 0.01 * k * k;
+        row.push(new Vector3(x, droop - 0.004 + (reta ? -0.003 * k : 0), z));
+      }
+      rows.push(row);
+    }
+    const brimTop = MeshBuilder.CreateRibbon('capBrim', { pathArray: rows, sideOrientation: Mesh.BACKSIDE }, s2);
+    const brimBottom = MeshBuilder.CreateRibbon('capBrimUnder', { pathArray: rows.map((row) => row.map((p) => p.add(new Vector3(0, -0.007, 0)))), sideOrientation: Mesh.FRONTSIDE }, s2);
+    this.add(brimTop, brim, rootMesh, { rx: -0.1 });
+    this.add(brimBottom, under, rootMesh, { rx: -0.1 }, false);
+    // Borda da aba (espessura).
+    const edge = MeshBuilder.CreateTube('capBrimEdge', { path: rows[4].map((p) => p.add(new Vector3(0, -0.0035, 0))), radius: 0.0036, tessellation: 6 }, s2);
+    this.add(edge, brim, rootMesh, { rx: -0.1 }, false, true);
+  }
 
   private mat(name: string, hex: string, o: MatOpts = {}): StandardMaterial {
     const key = `${this.scene.uid}:${name}`;
@@ -889,7 +1038,9 @@ export class CharacterModel {
     this.pivot.rotation.z = this.bodyRoll;
 
     // Mão de apoio na arma (o clipe de mira deixa a mão esquerda longe do guarda-mão).
-    const ik = this.supportGrip && reloadT < 0 ? this.upperWeight : 0;
+    // Só de perto (LOD 0): a 20 m+ a mão de apoio solta não aparece, e a IK custava ~2 ms
+    // por personagem.
+    const ik = this.supportGrip && reloadT < 0 && this.lodLevel === 0 ? this.upperWeight : 0;
     if (ik > 0.01) this.solveSupportArm(this.supportGrip!, ik);
     if (this.freefallW > 0.01 || this.chuteW > 0.01) this.applyAirPose();
   }
@@ -951,6 +1102,15 @@ export class CharacterModel {
     const n = this.inst.nodes;
     const esq = this.hipsNode.parent as TransformNode;
     const esqInv = Matrix.Invert(this.worldOf(esq));
+    this.ikRoot = esq;
+    try {
+      this.solveSupportArmIn(grip, weight, n, esqInv);
+    } finally {
+      this.ikRoot = null;
+    }
+  }
+
+  private solveSupportArmIn(grip: Vector3, weight: number, n: Map<string, TransformNode>, esqInv: Matrix): void {
 
     // 1) Mão direita: do ponto do clipe (aberto demais) para a empunhadura junto ao peito,
     //    definida no espaço da Spine2 para acompanhar a inclinação da mira. A orientação

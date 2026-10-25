@@ -124,6 +124,36 @@ Blender, centenas de MB) e `backups/` não vão para o repositório.
   (`DETAIL_CULL` em `StaticBatcher.ts`), e as armas do chão aparecem até 70 m: a vista do cume
   caiu de 113 para 42 ms por quadro neste computador.
 
+## Roupas, boné, mata e desempenho
+
+- **Camisa furando com calça/bermuda:** o cós da parte de baixo (0,93 m) ficava colado por
+  baixo da barra da camisa (0,845 m) e furava o tecido quando o corpo mexia. Com camisa, a
+  parte de baixo usa uma variante `_sob` (`GarmentAsset.ts`) encolhida para dentro a partir
+  da barra e sem a faixa que fica toda escondida.
+- **Bermudas e calças novas** (`tools/blender/garments.py`): bermudas de tactel degradê, preta
+  com vivo neon e vermelha (painel lateral e vivo no estilo das marcas de surf/streetwear),
+  bermuda cargo camuflada, bermuda e calça de moletom mescla e calça de tactel com vivo.
+  Emblemas próprios (círculo com onda), sem logotipo de marca.
+- **Tênis novos:** de corrida "de mola" (placa ondulada na entressola, branco/azul e
+  preto/laranja), bolha de amortecimento no calcanhar, faixa curva preto e couro de quadra
+  branco com detalhe verde. Desenhos próprios, inspirados nos estilos e sem logotipos.
+- **Boné:** copa de 6 gomos com pespontos, ilhoses, botão, faixa interna, emblema bordado
+  genérico e aba com pespontos e forro. Três opções: aba curva para frente, aba reta para
+  frente e aba reta para trás.
+- **Mata com trilhas** (`src/world/builders/Mata.ts`): no terreno vazio ao lado do campinho,
+  chão de folhas, trilhas de terra que serpenteiam (com pedras na beirada e um ramal), clareira
+  com fogueira, bancos de tronco e abrigo de lona, troncos caídos, pedras, ~60 árvores,
+  bananeiras e mato fechado. Aparece como "MATA" no minimapa e nas placas do salto.
+- **Desempenho** (tempo de CPU por quadro no teste, rua com bots: ~49 ms → ~27 ms):
+  - o desfoque do lobby ligava um renderizador de profundidade que continuava ativo na partida
+    e redesenhava a cena inteira (~900 draw calls a mais);
+  - o mapa de sombra desenhava todos os lotes do mapa: agora só os que cruzam a coluna de
+    sombra em volta do jogador, e detalhes miúdos não projetam sombra;
+  - casinhas de fundo num atlas (1 material em vez de 13) e em blocos grandes; variações de
+    cor do reboco, das tintas e dos portões viram um material só (cor por vértice); blocos do
+    lote estático de 48 → 64 m (malhas na cena: 5.022 → ~3.300);
+  - a IK da mão de apoio na arma só roda em quem está perto (custava ~2 ms por personagem).
+
 ## Lobby e entrada no mapa
 
 - **Lobby "boteco de laje"** (`src/world/builders/LobbyScene.ts`, usado por `src/modes/LobbyMode.ts`):
@@ -221,8 +251,9 @@ blender -b --python tools/blender/glasses.py -- art/build/personagem-base.blend 
 
 ### Partes de baixo e calçados (3D)
 
-Bermuda esportiva, bermuda jeans, calça cargo, calça jogger e calça jeans, e os quatro calçados
-(tênis branco, preto, casual e chuteira), são malhas 3D com skinning, geradas por
+Bermudas (esportiva, jeans, tactel, camuflada, moletom) e calças (cargo, jogger, jeans, tactel,
+moletom), e os calçados (tênis branco, preto, casual, de mola, bolha, faixa curva, de quadra e
+chuteira), são malhas 3D com skinning, geradas por
 `tools/blender/garments.py` a partir do corpo do manequim, como as camisas:
 
 - **Malhas:** `Bermuda_Curta` (barra a 0,60 m), `Bermuda_Longa` (0,53 m) e `Calca` (0,10 m, sobre o

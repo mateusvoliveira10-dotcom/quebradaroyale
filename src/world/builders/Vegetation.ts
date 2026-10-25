@@ -61,7 +61,7 @@ function roleMaterial(m: Materials): (role: string) => Material {
   return (role) => map[role] ?? m.foliage;
 }
 
-function prop(name: string): WorldModel | null {
+export function prop(name: string): WorldModel | null {
   return WorldAssets.current?.props.get(name) ?? null;
 }
 
@@ -300,6 +300,12 @@ export function scatterVegetation(b: WorldBuilder, o: ScatterOptions): void {
       if (obstacles.free(px, pz, 0.2, 0.2, gy + 0.05, gy + 0.8) && !blocked(px, pz, 0.1)) spots.push({ x: px, y: gy, z: pz, dry });
     }
   }
+  thinInstances('Mato', b.mats.grass, spots.filter((s) => !s.dry), rng);
+  thinInstances('Capim', b.mats.grassDry, spots.filter((s) => s.dry), rng);
+}
+
+/** Mato e capim extras (ex.: dentro da mata), pelos mesmos tufos de thin instances. */
+export function addUnderbrush(b: WorldBuilder, spots: Array<{ x: number; y: number; z: number; dry: boolean }>, rng: Rng): void {
   thinInstances('Mato', b.mats.grass, spots.filter((s) => !s.dry), rng);
   thinInstances('Capim', b.mats.grassDry, spots.filter((s) => s.dry), rng);
 }

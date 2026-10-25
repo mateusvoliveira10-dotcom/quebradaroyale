@@ -6,12 +6,13 @@ const COLORS: Record<FeatureKind, string> = {
   sidewalk: '#9c968a',
   beco: '#b3ad9f',
   field: '#c98a56',
+  mata: '#2f5a2a',
   terrace: '#8f8576',
   house: '#d98b5f',
   shop: '#ffd21f',
 };
 
-const ORDER: FeatureKind[] = ['terrace', 'road', 'sidewalk', 'beco', 'field', 'house', 'shop'];
+const ORDER: FeatureKind[] = ['terrace', 'mata', 'road', 'sidewalk', 'beco', 'field', 'house', 'shop'];
 
 /** Largura (m) da área mostrada em volta do jogador no chão. */
 const VIEW_GROUND = 110;

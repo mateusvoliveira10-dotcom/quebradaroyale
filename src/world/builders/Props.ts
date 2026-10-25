@@ -296,7 +296,22 @@ export function addClouds(b: WorldBuilder, rng: Rng, count: number): void {
   }
 }
 
-const BG_HOUSE_UV = [0, 1, 2, 3].map(() => new Vector4(0, 0, 1, 1)).concat([new Vector4(0, 0.94, 1, 0.99), new Vector4(0, 0.94, 1, 0.99)]);
+/**
+ * UV de uma casinha de fundo na célula `cell` do atlas 4 x 4 (Materials.bgAtlas): faces
+ * laterais com a fachada inteira; topo e fundo só na faixa de concreto (laje). Margem de
+ * meio texel para a célula vizinha não vazar.
+ */
+const BG_HOUSE_UV = Array.from({ length: 16 }, (_, cell) => {
+  const u0 = (cell % 4) / 4 + 0.004;
+  const u1 = (cell % 4 + 1) / 4 - 0.004;
+  // DynamicTexture inverte o V: a linha 0 do canvas fica no alto da textura.
+  const v1 = 1 - Math.floor(cell / 4) / 4 - 0.004;
+  const v0 = 1 - (Math.floor(cell / 4) + 1) / 4 + 0.004;
+  const roof = new Vector4(u0, v1 - 0.06 * 0.25, u1, v1 - 0.01 * 0.25);
+  return [0, 1, 2, 3].map(() => new Vector4(u0, v0, u1, v1)).concat([roof, roof.clone()]);
+});
+/** Cenário de fundo em blocos grandes: poucos lotes (é barato e quase sempre está longe). */
+const BG_CELL = 160;
 
 /**
  * Bairro em volta do muro, até ~75 m para fora: quarteirões de casinhas (fachada com janelas,
@@ -327,11 +342,15 @@ export function addOutskirts(b: WorldBuilder, half: number): void {
           if (Math.max(Math.abs(px), Math.abs(pz)) < inner) continue;
           // Prédio e câmera do lobby (além do muro norte, perto de x = -8): área livre.
           if (px > -34 && px < 20 && pz > half && pz < half + 40) continue;
-          const mat = rng.chance(0.35) ? m.bgBrick : rng.pick(m.bgFacades);
-          const box = MeshBuilder.CreateBox('subúrbio', { width: w, height: h, depth: d, faceUV: BG_HOUSE_UV }, b.scene);
+          const cell = rng.chance(0.35) ? m.bgBrickCell : rng.pick(m.bgPaintCells);
+          const box = MeshBuilder.CreateBox('subúrbio', { width: w, height: h, depth: d, faceUV: BG_HOUSE_UV[cell] }, b.scene);
           box.position.set(px, h / 2, pz);
-          b.addMesh(box, mat);
-          if (rng.chance(0.4)) b.cylinder({ diameter: 1.2, h: 0.9, x: px + rng.range(-w / 4, w / 4), y: h, z: pz + rng.range(-d / 4, d / 4), mat: m.tank, tessellation: 10 });
+          b.addMesh(box, m.bgAtlas, { cell: BG_CELL });
+          if (rng.chance(0.4)) {
+            const tank = MeshBuilder.CreateCylinder('caixa', { diameter: 1.2, height: 0.9, tessellation: 10 }, b.scene);
+            tank.position.set(px + rng.range(-w / 4, w / 4), h + 0.45, pz + rng.range(-d / 4, d / 4));
+            b.addMesh(tank, m.tank, { cell: BG_CELL });
+          }
         }
       }
     }
@@ -369,12 +388,11 @@ export function addBackdropHills(b: WorldBuilder, rng: Rng, innerRadius: number)
       if (h < 1) continue;
       const w = rng.range(4, 8);
       const hh = rng.range(3, 7);
-      const mat = rng.chance(0.4) ? m.bgBrick : rng.pick(m.bgFacades);
-      // Faces laterais com a fachada inteira; topo e fundo só na faixa de concreto (laje).
-      const box = MeshBuilder.CreateBox('bgHouse', { width: w, height: hh, depth: rng.range(4, 7), faceUV: BG_HOUSE_UV }, b.scene);
+      const cell = rng.chance(0.4) ? m.bgBrickCell : rng.pick(m.bgPaintCells);
+      const box = MeshBuilder.CreateBox('bgHouse', { width: w, height: hh, depth: rng.range(4, 7), faceUV: BG_HOUSE_UV[cell] }, b.scene);
       box.position.set(hx + lx, h + hh / 2 - 0.8, hz + lz);
       box.rotation.y = rng.range(0, Math.PI);
-      b.addMesh(box, mat);
+      b.addMesh(box, m.bgAtlas, { cell: BG_CELL });
     }
   }
 }
