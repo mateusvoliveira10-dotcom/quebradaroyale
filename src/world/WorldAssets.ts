@@ -100,10 +100,11 @@ export class WorldAssets {
     }
     vegetation.dispose();
     // Props de favela (`favela_props.py`: Lixo_a/b/c, Pneu, PilhaPneus, BarricadaPneus,
-    // BarricadaMadeira) e armas (`weapons.py`: Arma_<id>). Opcionais: sem eles o jogo usa
+    // BarricadaMadeira), armas (`weapons.py`: Arma_<id>) e peças do lobby e troncos da mata
+    // (`lobby_props.py`: MesaBar, CadeiraBar, Engradado, Isopor, CaixaSom, Tronco_a/b). Opcionais: sem eles o jogo usa
     // as versões antigas feitas de primitivas.
     await Promise.all(
-      ['favela.glb', 'weapons.glb'].map(async (file) => {
+      ['favela.glb', 'weapons.glb', 'lobby.glb'].map(async (file) => {
         try {
           const c = await LoadAssetContainerAsync(`${base}${file}`, scene);
           const models = collect(scene, c.meshes);
@@ -144,18 +145,6 @@ async function loadDetailedVehicle(scene: Scene, url: string, id: string): Promi
   if (!model) return null;
   model.colliders.push(...(models.get(`Col_${id}`)?.colliders ?? []));
   const lod = models.get(`Car_${id}_lod1`) ?? null;
-  // A transformação assada inclui o espelhamento do glTF (mão esquerda): os triângulos
-  // ficam ao contrário e, com o descarte de faces de trás, aparecia o interior do carro
-  // em vez da lataria. Estes materiais descartam faces de trás, então desvira.
-  for (const m of [model, lod]) {
-    for (const part of m?.parts.values() ?? []) {
-      const idx = part.getIndices();
-      if (!idx) continue;
-      const out = Array.from(idx);
-      for (let i = 0; i < out.length; i += 3) [out[i + 1], out[i + 2]] = [out[i + 2], out[i + 1]];
-      part.setIndices(out);
-    }
-  }
   const materials = new Map<string, Material>();
   for (const mat of c.materials) {
     // A cena não tem mapa de ambiente e a pintura PBR sem nada para refletir fica quase
@@ -209,6 +198,14 @@ function collect(scene: Scene, meshes: ReadonlyArray<{ getTotalVertices(): numbe
     // Assa a transformação do glTF (inclui a troca de mão do sistema de coordenadas).
     const vd = VertexData.ExtractFromMesh(node, true, true);
     vd.transform(node.getWorldMatrix());
+    // A transformação assada inclui o espelhamento do glTF (mão esquerda): os triângulos
+    // ficavam ao contrário e, com o descarte de faces de trás, aparecia o lado de dentro de
+    // tudo (troncos e móveis pretos, peças "ocas"). Desvira a ordem dos vértices.
+    if (node.getWorldMatrix().determinant() < 0 && vd.indices) {
+      const idx = Array.from(vd.indices);
+      for (let i = 0; i < idx.length; i += 3) [idx[i + 1], idx[i + 2]] = [idx[i + 2], idx[i + 1]];
+      vd.indices = idx;
+    }
     // O GLB vem sem UV, mas o lote estático só junta malhas com os mesmos atributos das
     // caixas do mapa (posição, normal, UV). Projeção de caixa pela normal de cada vértice
     // (topo usa x-z, lados usam o plano da face): textura sem esticar em nenhuma face.

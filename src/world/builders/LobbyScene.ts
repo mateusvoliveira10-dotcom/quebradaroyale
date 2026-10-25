@@ -13,10 +13,15 @@ import {
   Texture,
   TransformNode,
   Vector3,
+  Vector4,
 } from '@babylonjs/core';
 import { Rng } from '../../utils/random';
 import { softDot } from '../FxTextures';
 import type { Materials } from '../Materials';
+import { instantiateModel } from '../ModelInstance';
+import { WorldAssets } from '../WorldAssets';
+
+type Ctx2D = CanvasRenderingContext2D;
 
 /**
  * Cenário vivo do lobby: o "boteco de laje" onde o personagem espera a partida.
@@ -125,7 +130,7 @@ export class LobbyScene {
     }
   }
 
-  private mat(name: string, hex: string, o: { spec?: number; emissive?: number; tex?: Texture; twoSided?: boolean } = {}): StandardMaterial {
+  private mat(name: string, hex: string, o: { spec?: number; power?: number; emissive?: number; tex?: Texture; bump?: Texture; twoSided?: boolean; alpha?: boolean } = {}): StandardMaterial {
     const key = `${name}`;
     let mt = this.mats.get(key);
     if (mt) return mt;
@@ -133,11 +138,164 @@ export class LobbyScene {
     const c = Color3.FromHexString(hex);
     mt.diffuseColor = c;
     mt.specularColor = new Color3(1, 1, 1).scale(o.spec ?? 0.1);
+    mt.specularPower = o.power ?? 32;
     mt.emissiveColor = c.scale(o.emissive ?? 0.08);
     if (o.tex) mt.diffuseTexture = o.tex;
+    if (o.bump) mt.bumpTexture = o.bump;
+    if (o.alpha && o.tex) {
+      o.tex.hasAlpha = true;
+      mt.useAlphaFromDiffuseTexture = true;
+    }
     if (o.twoSided) mt.backFaceCulling = false;
     this.mats.set(key, mt);
     return mt;
+  }
+
+  /** Textura desenhada no canvas (repetível), criada uma vez por nome. */
+  private readonly texs = new Map<string, DynamicTexture>();
+  private tex(name: string, size: number, draw: (ctx: Ctx2D, s: number) => void, repeat = 1): DynamicTexture {
+    let t = this.texs.get(name);
+    if (t) return t;
+    t = new DynamicTexture(`lobbyTex_${name}`, { width: size, height: size }, this.scene, true);
+    const ctx = t.getContext() as unknown as Ctx2D;
+    draw(ctx, size);
+    t.update();
+    t.wrapU = t.wrapV = Texture.WRAP_ADDRESSMODE;
+    t.uScale = t.vScale = repeat;
+    t.anisotropicFilteringLevel = 8;
+    this.texs.set(name, t);
+    return t;
+  }
+
+  /** Plástico injetado: cor com leve granulado, marcas de molde e riscos de uso. */
+  private plastic(name: string, hex: string): StandardMaterial {
+    const tex = this.tex(`plastico_${name}`, 256, (ctx, s) => {
+      ctx.fillStyle = hex;
+      ctx.fillRect(0, 0, s, s);
+      for (let i = 0; i < 2600; i++) {
+        ctx.fillStyle = this.rng.chance(0.5) ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)';
+        ctx.fillRect(this.rng.range(0, s), this.rng.range(0, s), 1.5, 1.5);
+      }
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+      ctx.lineWidth = 0.8;
+      for (let i = 0; i < 26; i++) {
+        const x = this.rng.range(0, s);
+        const y = this.rng.range(0, s);
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + this.rng.range(-30, 30), y + this.rng.range(-6, 6));
+        ctx.stroke();
+      }
+      // Sujeira acumulada nas bordas do molde.
+      const g = ctx.createRadialGradient(s / 2, s / 2, s * 0.2, s / 2, s / 2, s * 0.75);
+      g.addColorStop(0, 'rgba(0,0,0,0)');
+      g.addColorStop(1, 'rgba(40,25,10,0.18)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, s, s);
+    }, 2);
+    return this.mat(`plastico_${name}`, '#ffffff', { tex, spec: 0.45, power: 60, emissive: 0.04 });
+  }
+
+  /** Relevo genérico (granulado) para tecidos, isopor e reboco. */
+  private grain(name: string, scale: number, strength: number): Texture {
+    return this.tex(`relevo_${name}`, 128, (ctx, s) => {
+      const img = ctx.createImageData(s, s);
+      for (let i = 0; i < s * s; i++) {
+        const n = (this.rng.next() - 0.5) * strength;
+        img.data[i * 4] = 128 + n * 127;
+        img.data[i * 4 + 1] = 128 - n * 60;
+        img.data[i * 4 + 2] = 255;
+        img.data[i * 4 + 3] = 255;
+      }
+      ctx.putImageData(img, 0, 0);
+    }, scale);
+  }
+
+  /** Material de um papel dos modelos de lobby.glb. */
+  private role(role: string, variant = ''): StandardMaterial | null {
+    switch (role) {
+      case 'plastic':
+        return this.plastic('vermelho', '#c41f18');
+      case 'crate':
+        return variant === 'red' ? this.plastic('engradadoVermelho', '#b8211a') : this.plastic('engradadoAmarelo', '#e8b81a');
+      case 'bottle':
+        return this.mat('vidroAmbar', '#4a2008', { spec: 1.2, power: 120, emissive: 0.1 });
+      case 'cap':
+        return this.mat('tampinha', '#c9a646', { spec: 1.0, power: 90, emissive: 0.08 });
+      case 'shadow':
+        return this.mat('vao', '#0c0b0a', { spec: 0 });
+      case 'foam': {
+        // Isopor: bolinhas de EPS prensadas.
+        const tex = this.tex('isopor', 256, (ctx, s) => {
+          ctx.fillStyle = '#efede6';
+          ctx.fillRect(0, 0, s, s);
+          for (let i = 0; i < 900; i++) {
+            const x = this.rng.range(0, s);
+            const y = this.rng.range(0, s);
+            const r = this.rng.range(3, 6);
+            ctx.strokeStyle = 'rgba(150,145,130,0.35)';
+            ctx.lineWidth = 0.8;
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+          for (let i = 0; i < 10; i++) {
+            ctx.fillStyle = 'rgba(120,100,70,0.08)';
+            ctx.beginPath();
+            ctx.arc(this.rng.range(0, s), this.rng.range(0, s), this.rng.range(15, 40), 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }, 3);
+        return this.mat('isopor', '#ffffff', { tex, spec: 0.05, emissive: 0.1, bump: this.grain('isopor', 6, 0.6) });
+      }
+      case 'lid':
+        return this.plastic('tampaAzul', '#2b63c4');
+      case 'rope':
+        return this.mat('corda', '#cfc4a0', { spec: 0.02, bump: this.grain('corda', 20, 0.8) });
+      case 'case': {
+        const tex = this.tex('vinilCaixa', 256, (ctx, s) => {
+          ctx.fillStyle = '#16161a';
+          ctx.fillRect(0, 0, s, s);
+          for (let i = 0; i < 5000; i++) {
+            ctx.fillStyle = this.rng.chance(0.5) ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.3)';
+            ctx.fillRect(this.rng.range(0, s), this.rng.range(0, s), 2, 2);
+          }
+        }, 3);
+        return this.mat('vinilCaixa', '#ffffff', { tex, spec: 0.25, power: 30, emissive: 0.02, bump: this.grain('vinil', 8, 0.7) });
+      }
+      case 'grille': {
+        const tex = this.tex('telaSom', 256, (ctx, s) => {
+          ctx.fillStyle = '#2a2a2e';
+          ctx.fillRect(0, 0, s, s);
+          ctx.fillStyle = '#0a0a0c';
+          for (let y = 4; y < s; y += 8) for (let x = (y / 8) % 2 ? 8 : 4; x < s; x += 8) {
+            ctx.beginPath();
+            ctx.arc(x, y, 2.6, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }, 6);
+        return this.mat('telaSom', '#ffffff', { tex, spec: 0.6, power: 50, emissive: 0.03 });
+      }
+      case 'panel':
+        return this.mat('painelSom', '#1b1b1f', { spec: 0.4 });
+      case 'metal':
+        return this.m.metal;
+      default:
+        return this.plastic('vermelho', '#c41f18');
+    }
+  }
+
+  /** Peça de lobby.glb presa a um nó (posição/giro). false = modelo não carregado. */
+  private model(name: string, parent: TransformNode, x: number, y: number, z: number, ry: number, variant = '', scale = 1): boolean {
+    const model = WorldAssets.current?.props.get(name);
+    if (!model) return false;
+    const n = new TransformNode(`${name}_no`, this.scene);
+    n.parent = parent;
+    n.position.set(x, y, z);
+    n.rotation.y = ry;
+    n.scaling.setAll(scale);
+    for (const m of instantiateModel(model, (r) => this.role(r, variant), n, name)) this.meshes.push(m);
+    return true;
   }
 
   private add<T extends Mesh>(mesh: T, mat: StandardMaterial, parent: TransformNode = this.root): T {
@@ -149,8 +307,18 @@ export class LobbyScene {
     return mesh;
   }
 
-  private box(w: number, h: number, d: number, x: number, y: number, z: number, mat: StandardMaterial, parent?: TransformNode): Mesh {
-    const b = MeshBuilder.CreateBox('lobbyBox', { width: w, height: h, depth: d }, this.scene);
+  private box(w: number, h: number, d: number, x: number, y: number, z: number, mat: StandardMaterial, parent?: TransformNode, tile?: number): Mesh {
+    const faceUV = tile
+      ? [
+          new Vector4(0, 0, w / tile, h / tile),
+          new Vector4(0, 0, w / tile, h / tile),
+          new Vector4(0, 0, d / tile, h / tile),
+          new Vector4(0, 0, d / tile, h / tile),
+          new Vector4(0, 0, w / tile, d / tile),
+          new Vector4(0, 0, w / tile, d / tile),
+        ]
+      : undefined;
+    const b = MeshBuilder.CreateBox('lobbyBox', { width: w, height: h, depth: d, faceUV }, this.scene);
     b.position.set(x, y + h / 2, z);
     return this.add(b, mat, parent);
   }
@@ -169,33 +337,32 @@ export class LobbyScene {
   private buildBoteco(): void {
     const red = this.mat('plasticoVermelho', '#d42a22', { spec: 0.35 });
     const table = this.node('mesaBar', -2.5, 0, -2.4, 0.2);
-    // Tampo com borda e pés.
-    this.box(0.8, 0.04, 0.8, 0, 0.7, 0, red, table);
-    this.box(0.84, 0.05, 0.84, 0, 0.66, 0, red, table);
-    for (const [lx, lz] of [[-0.34, -0.34], [0.34, -0.34], [-0.34, 0.34], [0.34, 0.34]]) this.box(0.045, 0.68, 0.045, lx, 0, lz, red, table);
-    for (const s of [-1, 1]) {
-      this.box(0.7, 0.03, 0.03, 0, 0.25, s * 0.34, red, table);
-      this.box(0.03, 0.03, 0.7, s * 0.34, 0.25, 0, red, table);
+    // Mesa de plástico de bar (modelo do Blender); sem o modelo, a versão de caixas.
+    const modeled = this.model('MesaBar', table, 0, 0, 0, 0);
+    if (!modeled) {
+      this.box(0.8, 0.04, 0.8, 0, 0.7, 0, red, table);
+      for (const [lx, lz] of [[-0.34, -0.34], [0.34, -0.34], [-0.34, 0.34], [0.34, 0.34]]) this.box(0.045, 0.68, 0.045, lx, 0, lz, red, table);
     }
     // Garrafas e copos americanos em cima.
     const glass = this.mat('vidroGarrafa', '#5a2e10', { spec: 0.9, emissive: 0.12 });
     const copo = this.mat('copo', '#e8d27a', { spec: 0.8, emissive: 0.2 });
     for (const [x, z] of [[-0.15, 0.1], [0.12, -0.12]]) {
       const b = MeshBuilder.CreateCylinder('garrafa', { diameter: 0.075, height: 0.24, tessellation: 10 }, this.scene);
-      b.position.set(x, 0.86, z);
+      b.position.set(x, 0.86 + 0.02, z);
       this.add(b, glass, table);
       const n = MeshBuilder.CreateCylinder('gargalo', { diameterTop: 0.025, diameterBottom: 0.06, height: 0.09, tessellation: 8 }, this.scene);
-      n.position.set(x, 1.02, z);
+      n.position.set(x, 1.04, z);
       this.add(n, glass, table);
     }
     for (const [x, z] of [[0.2, 0.18], [-0.22, -0.2], [0.05, 0.24]]) {
       const c = MeshBuilder.CreateCylinder('copo', { diameterTop: 0.07, diameterBottom: 0.055, height: 0.09, tessellation: 10 }, this.scene);
-      c.position.set(x, 0.77, z);
+      c.position.set(x, 0.79, z);
       this.add(c, copo, table);
     }
     // Cadeiras dobráveis vermelhas em volta (uma afastada, como se alguém tivesse levantado).
     const chairs: Array<[number, number, number]> = [[0, -0.72, 0], [0.75, 0, -Math.PI / 2], [0, 0.78, Math.PI], [-0.95, 0.15, Math.PI / 2 + 0.4]];
-    for (const [x, z, ry] of chairs) this.foldingChair(table, x, z, ry, red);
+    // O modelo da cadeira tem a frente para -Z: meia-volta para encarar a mesa.
+    for (const [x, z, ry] of chairs) if (!this.model('CadeiraBar', table, x, 0, z, ry + Math.PI)) this.foldingChair(table, x, z, ry, red);
 
     // Guarda-sol de bar listrado, balançando de leve com o vento.
     const umbrella = this.node('guardaSol', -2.5, 0, -2.4);
@@ -211,10 +378,19 @@ export class LobbyScene {
       sctx.fillRect(i * 64, 0, 64, 32);
     }
     stripes.update();
-    const canopy = MeshBuilder.CreateCylinder('lona', { diameterTop: 0.08, diameterBottom: 2.5, height: 0.55, tessellation: 8 }, this.scene);
+    const canopy = MeshBuilder.CreateCylinder('lona', { diameterTop: 0.08, diameterBottom: 2.5, height: 0.55, tessellation: 16 }, this.scene);
+    // Varetas por baixo da lona e ponteira no alto.
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
+      const rib = MeshBuilder.CreateTube('vareta', { path: [new Vector3(0, 2.3, 0), new Vector3(Math.cos(a) * 1.22, 1.79, Math.sin(a) * 1.22)], radius: 0.008, tessellation: 4 }, this.scene);
+      this.add(rib, pole, umbrella);
+    }
+    const tip = MeshBuilder.CreateSphere('ponteira', { diameter: 0.07, segments: 6 }, this.scene);
+    tip.position.y = 2.36;
+    this.add(tip, pole, umbrella);
     canopy.position.y = 2.05;
     this.add(canopy, this.mat('lonaGuardaSol', '#ffffff', { tex: stripes, twoSided: true, emissive: 0.12 }), umbrella);
-    const fringe = MeshBuilder.CreateCylinder('franja', { diameter: 2.52, height: 0.12, tessellation: 8, cap: Mesh.NO_CAP }, this.scene);
+    const fringe = MeshBuilder.CreateCylinder('franja', { diameter: 2.52, height: 0.12, tessellation: 16, cap: Mesh.NO_CAP }, this.scene);
     fringe.position.y = 1.72;
     this.add(fringe, this.mat('franja', '#d42a22', { twoSided: true }), umbrella);
     this.anims.push((t) => {
@@ -230,14 +406,20 @@ export class LobbyScene {
     const stacks: Array<[number, number, number]> = [[-4.3, -4.3, 4], [-3.75, -4.4, 2], [-4.4, -3.75, 1]];
     for (const [x, z, n] of stacks) {
       for (let i = 0; i < n; i++) {
-        const c = this.box(0.46, 0.29, 0.34, x + this.rng.range(-0.03, 0.03), i * 0.3, z + this.rng.range(-0.03, 0.03), i % 2 === 0 ? yellow : red2);
-        c.rotation.y = this.rng.range(-0.12, 0.12);
+        const jx = this.rng.range(-0.03, 0.03);
+        const jz = this.rng.range(-0.03, 0.03);
+        const ry = this.rng.range(-0.12, 0.12);
+        if (this.model('Engradado', this.root, x + jx, i * 0.3, z + jz, ry + Math.PI / 2, i % 2 === 0 ? '' : 'red')) continue;
+        const c = this.box(0.46, 0.29, 0.34, x + jx, i * 0.3, z + jz, i % 2 === 0 ? yellow : red2);
+        c.rotation.y = ry;
         this.box(0.4, 0.02, 0.28, x, i * 0.3 + 0.26, z, dark);
       }
     }
     const isopor = this.node('isopor', -3.2, 0, -4.35, 0.3);
-    this.box(0.62, 0.42, 0.42, 0, 0, 0, this.mat('isopor', '#f4f2ea', { emissive: 0.15 }), isopor);
-    this.box(0.66, 0.06, 0.46, 0, 0.42, 0, this.mat('tampaIsopor', '#2f6fd6', { spec: 0.3 }), isopor);
+    if (!this.model('Isopor', isopor, 0, 0, 0, 0)) {
+      this.box(0.62, 0.42, 0.42, 0, 0, 0, this.mat('isopor', '#f4f2ea', { emissive: 0.15 }), isopor);
+      this.box(0.66, 0.06, 0.46, 0, 0.42, 0, this.mat('tampaIsopor', '#2f6fd6', { spec: 0.3 }), isopor);
+    }
   }
 
   private foldingChair(parent: TransformNode, x: number, z: number, ry: number, mat: StandardMaterial): void {
@@ -264,20 +446,42 @@ export class LobbyScene {
 
   private buildChurrasqueira(): void {
     const n = this.node('churrasqueira', 3.7, 0, -3.9, -0.25);
-    this.box(1.3, 0.85, 0.65, 0, 0, 0, this.m.brick, n);
-    this.box(1.36, 0.05, 0.7, 0, 0.85, 0, this.m.concrete, n);
+    const tijolo = this.m.hq.tijolo;
+    this.box(1.3, 0.85, 0.65, 0, 0, 0, tijolo, n, 1.2);
+    this.box(1.36, 0.05, 0.7, 0, 0.85, 0, this.m.hq.concreto, n, 2);
+    // Boca da churrasqueira (vão escuro) e fuligem.
+    this.box(0.9, 0.3, 0.02, 0, 0.38, 0.326, this.mat('fuligem', '#141110', { spec: 0 }), n);
     // Grelha com brasa e espetinhos.
     const brasa = this.mat('brasa', '#ff6a1a', { emissive: 0.9 });
     const ember = this.box(1.1, 0.03, 0.45, 0, 0.88, 0, brasa, n);
     this.glowMesh(ember);
     for (let i = 0; i < 9; i++) this.box(1.1, 0.012, 0.012, 0, 0.93, -0.2 + i * 0.05, this.m.metalDark, n);
-    const carne = this.mat('espetinho', '#7a3a1e', { spec: 0.4 });
+    const carne = this.mat('espetinho', '#ffffff', {
+      spec: 0.5,
+      power: 40,
+      tex: this.tex('carneAssada', 64, (ctx, s) => {
+        ctx.fillStyle = '#6e3416';
+        ctx.fillRect(0, 0, s, s);
+        for (let i = 0; i < 40; i++) {
+          ctx.fillStyle = this.rng.chance(0.5) ? 'rgba(30,12,4,0.5)' : 'rgba(170,90,40,0.4)';
+          ctx.fillRect(this.rng.range(0, s), this.rng.range(0, s), this.rng.range(2, 8), this.rng.range(2, 5));
+        }
+      }),
+    });
     for (let i = 0; i < 4; i++) {
-      this.box(0.02, 0.02, 0.6, -0.35 + i * 0.22, 0.95, 0, this.m.wood, n);
-      for (let k = 0; k < 3; k++) this.box(0.07, 0.06, 0.07, -0.35 + i * 0.22, 0.95, -0.12 + k * 0.12, carne, n);
+      const stick = MeshBuilder.CreateCylinder('espeto', { diameter: 0.012, height: 0.62, tessellation: 5 }, this.scene);
+      stick.rotation.x = Math.PI / 2;
+      stick.position.set(-0.35 + i * 0.22, 0.97, 0);
+      this.add(stick, this.m.wood, n);
+      for (let k = 0; k < 3; k++) {
+        const piece = MeshBuilder.CreateIcoSphere('carne', { radius: 0.04, subdivisions: 1 }, this.scene);
+        piece.scaling.set(1, 0.85, 1.1);
+        piece.position.set(-0.35 + i * 0.22, 0.97, -0.12 + k * 0.12);
+        this.add(piece, carne, n);
+      }
     }
     // Chaminé.
-    this.box(0.35, 1.5, 0.35, 0.45, 0.85, 0.12, this.m.brick, n);
+    this.box(0.35, 1.5, 0.35, 0.45, 0.85, 0.12, tijolo, n, 1.2);
     this.anims.push((t) => {
       const k = 0.75 + Math.sin(t * 7.1) * 0.12 + Math.sin(t * 13.7) * 0.08;
       (ember.material as StandardMaterial).emissiveColor.copyFromFloats(k, k * 0.42, k * 0.1);
@@ -318,7 +522,8 @@ export class LobbyScene {
   private buildSom(): void {
     const n = this.node('caixaSom', 1.9, 0, -4.5, 0.25);
     const black = this.mat('caixaSom', '#18181c', { spec: 0.3 });
-    this.box(0.55, 0.85, 0.42, 0, 0, 0, black, n);
+    // Modelo com a frente para -Z: meia-volta (os alto-falantes ficam em +Z).
+    if (!this.model('CaixaSom', n, 0, -0.03, 0, Math.PI)) this.box(0.55, 0.85, 0.42, 0, 0, 0, black, n);
     const cone = this.mat('cone', '#2b2b31', { spec: 0.6 });
     const ledMat = this.mat('ledSom', '#25c4ff', { emissive: 1 });
     const woofers: Mesh[] = [];
@@ -365,9 +570,9 @@ export class LobbyScene {
 
   /** Gambiarra de lâmpadas entre dois postes de madeira, com algumas piscando. */
   private buildGambiarra(): void {
-    const wood = this.m.wood;
-    for (const x of [-5, 5]) this.box(0.1, 3.1, 0.1, x, 0, -5.0, wood);
-    this.box(0.1, 2.9, 0.1, -5, 0, -0.6, wood);
+    const wood = this.m.hq.madeira;
+    for (const x of [-5, 5]) this.box(0.1, 3.1, 0.1, x, 0, -5.0, wood, undefined, 0.6);
+    this.box(0.1, 2.9, 0.1, -5, 0, -0.6, wood, undefined, 0.6);
     const warm = this.mat('lampada', '#ffd690', { emissive: 1 });
     const blink = this.mat('lampadaPisca', '#ffcf7a', { emissive: 1 });
     const lines: Array<[Vector3, Vector3, number]> = [
@@ -432,9 +637,11 @@ export class LobbyScene {
       holder.position.copyFrom(path[i]);
       holder.rotation.y = yaw;
       this.dynamic.add(holder);
-      const cloth = MeshBuilder.CreatePlane('roupa', { width: w, height: h }, this.scene);
-      cloth.position.y = -h / 2;
-      this.add(cloth, this.mat(`roupa${i % clothes.length}`, clothes[i % clothes.length], { twoSided: true, tex: undefined, emissive: 0.1 }), holder);
+      const kind = i % 3;
+      const color = clothes[i % clothes.length];
+      const cloth = MeshBuilder.CreatePlane('roupa', { width: kind === 2 ? w * 1.1 : 0.55, height: kind === 2 ? h : 0.6 }, this.scene);
+      cloth.position.y = -(kind === 2 ? h : 0.6) / 2;
+      this.add(cloth, this.clothMat(kind, color), holder);
       const phase = this.rng.range(0, 6);
       this.anims.push((t) => {
         holder.rotation.x = Math.sin(t * 1.9 + phase) * 0.18 + Math.sin(t * 4.3 + phase) * 0.05 + 0.08;
@@ -442,9 +649,77 @@ export class LobbyScene {
     }
   }
 
+  /** Roupa no varal: camiseta, bermuda ou toalha listrada, com dobras e prendedores. */
+  private clothMat(kind: number, color: string): StandardMaterial {
+    const tex = this.tex(`roupa_${kind}_${color}`, 128, (ctx, s) => {
+      ctx.clearRect(0, 0, s, s);
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      if (kind === 0) {
+        // Camiseta pendurada pelos ombros.
+        ctx.moveTo(s * 0.3, s * 0.04);
+        ctx.lineTo(s * 0.42, s * 0.04);
+        ctx.quadraticCurveTo(s * 0.5, s * 0.12, s * 0.58, s * 0.04);
+        ctx.lineTo(s * 0.7, s * 0.04);
+        ctx.lineTo(s * 0.98, s * 0.2);
+        ctx.lineTo(s * 0.88, s * 0.36);
+        ctx.lineTo(s * 0.76, s * 0.3);
+        ctx.lineTo(s * 0.77, s * 0.97);
+        ctx.lineTo(s * 0.23, s * 0.97);
+        ctx.lineTo(s * 0.24, s * 0.3);
+        ctx.lineTo(s * 0.12, s * 0.36);
+        ctx.lineTo(s * 0.02, s * 0.2);
+      } else if (kind === 1) {
+        // Bermuda pendurada pela cintura.
+        ctx.moveTo(s * 0.18, s * 0.04);
+        ctx.lineTo(s * 0.82, s * 0.04);
+        ctx.lineTo(s * 0.9, s * 0.8);
+        ctx.lineTo(s * 0.56, s * 0.82);
+        ctx.lineTo(s * 0.5, s * 0.36);
+        ctx.lineTo(s * 0.44, s * 0.82);
+        ctx.lineTo(s * 0.1, s * 0.8);
+      } else {
+        ctx.rect(0, s * 0.02, s, s * 0.98);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.save();
+      ctx.clip();
+      if (kind === 2) {
+        for (let y = 0.2; y < 1; y += 0.25) {
+          ctx.fillStyle = 'rgba(255,255,255,0.75)';
+          ctx.fillRect(0, s * y, s, s * 0.06);
+        }
+      }
+      // Dobras e sombra de tecido molhado.
+      for (let i = 0; i < 7; i++) {
+        const x = this.rng.range(0, s);
+        const g = ctx.createLinearGradient(x - 8, 0, x + 8, 0);
+        g.addColorStop(0, 'rgba(0,0,0,0)');
+        g.addColorStop(0.5, 'rgba(0,0,0,0.18)');
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(x - 8, 0, 16, s);
+      }
+      for (let i = 0; i < 1500; i++) {
+        ctx.fillStyle = 'rgba(0,0,0,0.05)';
+        ctx.fillRect(this.rng.range(0, s), this.rng.range(0, s), 1, 1);
+      }
+      if (kind === 1) {
+        ctx.fillStyle = 'rgba(0,0,0,0.25)';
+        ctx.fillRect(s * 0.18, s * 0.04, s * 0.64, s * 0.07);
+      }
+      ctx.restore();
+      // Prendedores.
+      ctx.fillStyle = '#f2f2f2';
+      for (const x of kind === 2 ? [0.15, 0.85] : [0.3, 0.7]) ctx.fillRect(s * x - 3, 0, 6, s * 0.1);
+    });
+    return this.mat(`roupa_${kind}_${color}`, '#ffffff', { tex, alpha: true, twoSided: true, emissive: 0.12, spec: 0.02 });
+  }
+
   /** Puxadinho na lateral esquerda com grafite "QUEBRADA" (identidade do jogo). */
   private buildMuroGrafitado(): void {
-    const wall = this.box(0.22, 2.5, 4.6, -5.15, 0, -2.75, this.m.muro);
+    const wall = this.box(0.22, 2.5, 4.6, -5.15, 0, -2.75, this.m.hq.muro, undefined, 2.5);
     wall.receiveShadows = true;
     const tex = new DynamicTexture('grafiteLobby', { width: 1024, height: 512 }, this.scene, true);
     const ctx = tex.getContext() as unknown as CanvasRenderingContext2D;
@@ -501,11 +776,44 @@ export class LobbyScene {
   }
 
   private buildPlantas(): void {
-    const pot = this.m.rust;
+    const pot = this.mat('barro', '#ffffff', {
+      spec: 0.08,
+      tex: this.tex('barro', 128, (ctx, s) => {
+        ctx.fillStyle = '#b5592f';
+        ctx.fillRect(0, 0, s, s);
+        for (let i = 0; i < 1800; i++) {
+          ctx.fillStyle = this.rng.chance(0.5) ? 'rgba(255,200,160,0.08)' : 'rgba(60,20,5,0.1)';
+          ctx.fillRect(this.rng.range(0, s), this.rng.range(0, s), 2, 2);
+        }
+        // Borda de cima mais clara e manchas de água.
+        ctx.fillStyle = 'rgba(255,220,190,0.18)';
+        ctx.fillRect(0, 0, s, s * 0.12);
+        for (let i = 0; i < 6; i++) {
+          ctx.fillStyle = 'rgba(240,235,220,0.12)';
+          ctx.fillRect(this.rng.range(0, s), s * 0.5, this.rng.range(6, 18), s * 0.5);
+        }
+      }),
+    });
+    const soil = this.mat('terraVaso', '#3a2716', { spec: 0 });
+    const leaves = WorldAssets.current?.props.get('Bananeira');
     for (const [x, z, s] of [[4.4, -0.8, 1], [-4.5, 0.6, 1.2], [0.6, -4.8, 0.9]]) {
-      const p = MeshBuilder.CreateCylinder('vaso', { diameterTop: 0.5 * s, diameterBottom: 0.38 * s, height: 0.42 * s, tessellation: 12 }, this.scene);
+      const p = MeshBuilder.CreateCylinder('vaso', { diameterTop: 0.5 * s, diameterBottom: 0.38 * s, height: 0.42 * s, tessellation: 20 }, this.scene);
       p.position.set(x, 0.21 * s, z);
       this.add(p, pot);
+      const rim = MeshBuilder.CreateTorus('bordaVaso', { diameter: 0.5 * s, thickness: 0.04 * s, tessellation: 20 }, this.scene);
+      rim.position.set(x, 0.42 * s, z);
+      this.add(rim, pot);
+      const dirt = MeshBuilder.CreateDisc('terraVaso', { radius: 0.23 * s, tessellation: 16 }, this.scene);
+      dirt.rotation.x = Math.PI / 2;
+      dirt.position.set(x, 0.39 * s, z);
+      this.add(dirt, soil);
+      // Muda de bananeira (modelo da vegetação) no lugar das bolas de folhas.
+      if (leaves) {
+        const holder = this.node('muda', x, 0.38 * s, z, this.rng.range(0, Math.PI * 2));
+        holder.scaling.setAll(0.3 * s);
+        for (const m of instantiateModel(leaves, (r) => (r.startsWith('leaf') || r === 'palm' ? this.m.palmLeaf : r === 'bark' ? this.m.bark : this.m.foliage), holder, 'muda')) this.meshes.push(m);
+        continue;
+      }
       for (let k = 0; k < 3; k++) {
         const leaf = MeshBuilder.CreateIcoSphere('planta', { radius: 0.3 * s, subdivisions: 2 }, this.scene);
         leaf.position.set(x + this.rng.range(-0.12, 0.12), (0.62 + k * 0.18) * s, z + this.rng.range(-0.12, 0.12));

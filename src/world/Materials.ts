@@ -88,6 +88,13 @@ export class Materials {
   /** Mato verde e capim seco (dois lados, sem sombra própria). */
   readonly grass: StandardMaterial;
   readonly grassDry: StandardMaterial;
+  /** Morros do horizonte: mata fechada, capim e barrancos de terra (no lugar do verde liso). */
+  readonly morroFundo: StandardMaterial;
+  /** Texturas de superfície comuns (multiplicam a cor): metal, plástico e borracha. */
+  private surfaceTex!: { metal: DynamicTexture; plastic: DynamicTexture; rubber: DynamicTexture };
+  /** Casca de tronco deitado e ponta cortada (anéis). */
+  readonly barkLog: StandardMaterial;
+  readonly woodEnd: StandardMaterial;
   /** Chão da mata (terra escura com folhas) e trilha de terra batida. */
   readonly chaoMata: StandardMaterial;
   readonly trilha: StandardMaterial;
@@ -149,7 +156,7 @@ export class Materials {
     const corrugatedTex = this.texture('tex_corrugated', 128, (ctx, s) => this.drawCorrugated(ctx, s, '#b9b9b2'));
     const steelTex = this.texture('tex_steeldoor', 128, (ctx, s) => this.drawCorrugated(ctx, s, '#8d939a', true));
     const noiseTex = this.texture('tex_noise', 128, (ctx, s) => this.drawNoise(ctx, s, '#ffffff', 0.12, 0.25));
-    const leafTex = this.texture('tex_leaf', 128, (ctx, s) => this.drawLeaves(ctx, s));
+    const leafTex = this.texture('tex_leaf', 256, (ctx, s) => this.drawLeaves(ctx, s));
     const woodTex = this.texture('tex_wood', 128, (ctx, s) => this.drawWood(ctx, s));
     const fenceTex = this.texture('tex_fence', 128, (ctx, s) => this.drawFence(ctx, s), true);
     const shadowTex = this.texture('tex_contact', 64, (ctx, s) => this.drawContact(ctx, s), true);
@@ -165,6 +172,10 @@ export class Materials {
     this.sidewalk = this.make('sidewalk', '#ffffff', { tex: sidewalkTex, castShadow: false });
     this.curb = this.make('curb', '#d8d3c8', { tex: concreteTex });
     this.dirt = this.make('dirt', '#ffffff', { tex: dirtTex, castShadow: false });
+    const hillTex = this.texture('tex_morroFundo', 512, (ctx, s) => this.drawHillVegetation(ctx, s));
+    hillTex.uScale = 9;
+    hillTex.vScale = 5;
+    this.morroFundo = this.make('morroFundo', '#ffffff', { tex: hillTex, castShadow: false, emissive: 0.04 });
     this.chaoMata = this.make('chaoMata', '#ffffff', { tex: this.texture('tex_chaoMata', 512, (ctx, s) => this.drawForestFloor(ctx, s)), castShadow: false });
     this.trilha = this.make('trilha', '#d2b48a', { tex: dirtTex, castShadow: false });
     this.field = this.make('field', '#d08a55', { tex: dirtTex, castShadow: false });
@@ -177,7 +188,7 @@ export class Materials {
       power: 1.6,
     });
     this.wire = this.make('wire', '#17141c');
-    this.rebar = this.make('rebar', '#6b3d26');
+    this.rebar = this.make('rebar', '#ffffff', { tex: this.texture('tex_rebarSurf', 128, (ctx, s) => this.drawRustSurface(ctx, s)) });
     this.tank = this.make('tank', '#2f7fe0', { spec: 0.35, power: 40, tex: tankTex });
     this.tankLid = this.make('tankLid', '#1e5fb3', { spec: 0.35, power: 40, tex: noiseTex });
     this.leafRed = this.make('leafRed', '#b0502a', { tex: leafTex });
@@ -200,27 +211,42 @@ export class Materials {
     this.cloud.fogEnabled = false;
     this.corrugated = this.make('corrugated', '#ffffff', { tex: corrugatedTex });
     this.steelDoor = this.make('steelDoor', '#ffffff', { tex: steelTex, spec: 0.3 });
-    this.metal = this.make('metal', '#9aa1a8', { spec: 0.6, power: 48 });
-    this.metalDark = this.make('metalDark', '#3a3d42', { spec: 0.4, power: 40 });
+    // Superfícies que eram cor lisa: metal escovado com riscos e sujeira, plástico com
+    // granulado e marcas, borracha, saco de lixo amassado, ferrugem e pedra envelhecida.
+    const metalTex = this.texture('tex_metalSurf', 256, (ctx, s) => this.drawMetalSurface(ctx, s));
+    const plasticTex = this.texture('tex_plasticSurf', 256, (ctx, s) => this.drawPlasticSurface(ctx, s));
+    const rubberTex = this.texture('tex_rubberSurf', 128, (ctx, s) => this.drawNoise(ctx, s, '#ffffff', 0.35, 0.35));
+    const bagTex = this.texture('tex_bagSurf', 256, (ctx, s) => this.drawBagSurface(ctx, s));
+    this.metal = this.make('metal', '#9aa1a8', { spec: 0.6, power: 48, tex: metalTex });
+    this.metalDark = this.make('metalDark', '#3a3d42', { spec: 0.4, power: 40, tex: metalTex });
+    this.surfaceTex = { metal: metalTex, plastic: plasticTex, rubber: rubberTex };
     this.rust = this.make('rust', '#7a4a30', { tex: noiseTex });
     this.wood = this.make('wood', '#ffffff', { tex: woodTex });
     this.orange = this.make('orange', '#e8742a', { tex: noiseTex, spec: 0.2 });
-    this.rubber = this.make('rubber', '#1f1f22', { spec: 0.15 });
+    this.rubber = this.make('rubber', '#1f1f22', { spec: 0.15, tex: rubberTex });
     // Verdes de folha menos saturados (mata atlântica / árvore de rua, não verde de desenho).
-    this.foliage = this.make('foliage', '#4a8a36', { tex: leafTex });
-    this.foliageDark = this.make('foliageDark', '#335f27', { tex: leafTex });
-    this.bark = this.make('bark', '#6a4a32', { tex: noiseTex });
-    this.pvc = this.make('pvc', '#e9e6df', { spec: 0.3 });
-    this.gasRed = this.make('gasRed', '#c9332b', { spec: 0.5, power: 40 });
-    this.plasticRed = this.make('plasticRed', '#d8312c', { spec: 0.35 });
-    this.plasticYellow = this.make('plasticYellow', '#f4c21d', { spec: 0.35 });
-    this.plasticBlue = this.make('plasticBlue', '#2a64c8', { spec: 0.35 });
+    this.foliage = this.make('foliage', '#62a844', { tex: leafTex });
+    this.foliageDark = this.make('foliageDark', '#467a33', { tex: leafTex });
+    // Casca: sulcos verticais, placas e musgo (árvores); a dos troncos deitados é a mesma
+    // desenhada girada (o UV dos modelos segue o eixo X do tronco).
+    const barkTex = this.texture('tex_bark', 256, (ctx, s) => this.drawBark(ctx, s));
+    this.bark = this.make('bark', '#ffffff', { tex: barkTex });
+    const barkLogTex = this.texture('tex_barkLog', 256, (ctx, s) => this.drawBark(ctx, s));
+    barkLogTex.wAng = Math.PI / 2;
+    barkLogTex.uScale = barkLogTex.vScale = 1.6;
+    this.barkLog = this.make('barkLog', '#ffffff', { tex: barkLogTex });
+    this.woodEnd = this.make('woodEnd', '#ffffff', { tex: this.texture('tex_woodEnd', 256, (ctx, s) => this.drawWoodEnd(ctx, s)) });
+    this.pvc = this.make('pvc', '#e9e6df', { spec: 0.3, tex: plasticTex });
+    this.gasRed = this.make('gasRed', '#c9332b', { spec: 0.5, power: 40, tex: metalTex });
+    this.plasticRed = this.make('plasticRed', '#d8312c', { spec: 0.35, tex: plasticTex });
+    this.plasticYellow = this.make('plasticYellow', '#f4c21d', { spec: 0.35, tex: plasticTex });
+    this.plasticBlue = this.make('plasticBlue', '#2a64c8', { spec: 0.35, tex: plasticTex });
     // Plástico de saco de lixo: escuro, com reflexo forte e "brilho de borda" (fresnel).
-    this.trashBag = this.make('trashBag', '#16171b', { spec: 0.9, power: 70, emissive: 0.02 });
+    this.trashBag = this.make('trashBag', '#1d1e23', { spec: 0.9, power: 70, emissive: 0.02, tex: bagTex });
     this.trashBag.emissiveColor = Color3.White();
     this.trashBag.emissiveFresnelParameters = new FresnelParameters({ leftColor: new Color3(0.16, 0.17, 0.2), rightColor: new Color3(0.01, 0.01, 0.012), bias: 0.08, power: 2.4 });
-    this.bagBlue = this.make('bagBlue', '#1f4fb8', { spec: 0.8, power: 60 });
-    this.bagWhite = this.make('bagWhite', '#d9dad6', { spec: 0.6, power: 40 });
+    this.bagBlue = this.make('bagBlue', '#1f4fb8', { spec: 0.8, power: 60, tex: bagTex });
+    this.bagWhite = this.make('bagWhite', '#d9dad6', { spec: 0.6, power: 40, tex: bagTex });
     this.cardboard = this.make('cardboard', '#a07646', { tex: noiseTex });
     this.bottle = this.make('bottle', '#2a6b34', { spec: 1, power: 90, emissive: 0.15 });
     this.rubberBurnt = this.make('rubberBurnt', '#2a2622', { spec: 0.05, tex: noiseTex });
@@ -276,8 +302,10 @@ export class Materials {
       tex: this.texture('tex_taxi', 256, (ctx, s, h) => this.drawTaxiSign(ctx, s, h), false, (s) => s / 4),
     });
     // Estátua de pedra-sabão clara (sem UV no modelo: cor lisa) e pedestal de concreto.
-    this.statue = this.make('statue', '#d2ccbd', { spec: 0.12, power: 20, emissive: 0.06 });
-    this.statuePedestal = this.make('statuePedestal', '#a8a298', { spec: 0.05 });
+    // Pedra-sabão/concreto envelhecido: manchas, escorridos de chuva e liquens.
+    const statueTex = this.texture('tex_statueStone', 512, (ctx, s) => this.drawStatueStone(ctx, s));
+    this.statue = this.make('statue', '#ffffff', { spec: 0.12, power: 20, emissive: 0.06, tex: statueTex });
+    this.statuePedestal = this.make('statuePedestal', '#cfc8ba', { spec: 0.05, tex: statueTex });
 
     // Um atlas só (4 x 2 desenhos de 256 x 128): um material = um lote por bloco do mapa.
     const graffitiTex = this.texture('tex_graffiti', 1024, (ctx, w, h) => {
@@ -348,6 +376,11 @@ export class Materials {
     foraTex.vScale = 150;
     this.campoFora = this.make('campoFora', '#a8a27a', { tex: foraTex, castShadow: false });
     this.hq = new MaterialsHQ(scene);
+    // Peças do kit das casas que eram cor lisa (caixa de fibra, plástico, calha, borracha).
+    this.hq.caixa.diffuseTexture = this.surfaceTex.plastic;
+    this.hq.plastico.diffuseTexture = this.surfaceTex.plastic;
+    this.hq.calha.diffuseTexture = this.surfaceTex.metal;
+    this.hq.borracha.diffuseTexture = this.surfaceTex.rubber;
     // Variações de cor do mesmo material viram um lote só (cor por vértice).
     shareTint(this.paints, 'paint_tinta');
     shareTint(this.hq.reboco, 'hq_reboco_tinta');
@@ -729,6 +762,200 @@ export class Materials {
     this.blotches(ctx, s, 6, 'rgba(0,0,0,0.2)', 8, 20);
   }
 
+  /** Metal: escovado fino, riscos, sujeira escorrida e pontos de ferrugem (branco = a cor). */
+  private drawMetalSurface(ctx: Ctx, s: number): void {
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, s, s);
+    for (let i = 0; i < 260; i++) {
+      ctx.strokeStyle = this.rng.chance(0.5) ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.07)';
+      ctx.lineWidth = 1;
+      const y = this.rng.range(0, s);
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(s, y + this.rng.range(-2, 2));
+      ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+    for (let i = 0; i < 30; i++) {
+      const x = this.rng.range(0, s);
+      const y = this.rng.range(0, s);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + this.rng.range(-20, 20), y + this.rng.range(-20, 20));
+      ctx.stroke();
+    }
+    for (let i = 0; i < 8; i++) {
+      const x = this.rng.range(0, s);
+      const g = ctx.createLinearGradient(0, 0, 0, s);
+      g.addColorStop(0, 'rgba(60,45,30,0)');
+      g.addColorStop(1, 'rgba(60,45,30,0.22)');
+      ctx.fillStyle = g;
+      ctx.fillRect(x, this.rng.range(0, s * 0.5), this.rng.range(4, 14), s);
+    }
+    this.blotches(ctx, s, 6, 'rgba(140,70,30,0.25)', 3, 10);
+  }
+
+  /** Plástico/fibra: granulado, marcas de molde, sujeira e desbotado de sol. */
+  private drawPlasticSurface(ctx: Ctx, s: number): void {
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, s, s);
+    for (let i = 0; i < 3000; i++) {
+      ctx.fillStyle = this.rng.chance(0.5) ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)';
+      ctx.fillRect(this.rng.range(0, s), this.rng.range(0, s), 1.5, 1.5);
+    }
+    this.blotches(ctx, s, 8, 'rgba(255,255,255,0.12)', 20, 60);
+    this.blotches(ctx, s, 10, 'rgba(70,55,35,0.12)', 8, 30);
+    const g = ctx.createLinearGradient(0, 0, 0, s);
+    g.addColorStop(0.7, 'rgba(60,45,30,0)');
+    g.addColorStop(1, 'rgba(60,45,30,0.2)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, s, s);
+  }
+
+  /** Saco plástico amassado: vincos claros (brilho) e escuros em várias direções. */
+  private drawBagSurface(ctx: Ctx, s: number): void {
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, s, s);
+    for (let i = 0; i < 90; i++) {
+      const x = this.rng.range(0, s);
+      const y = this.rng.range(0, s);
+      const a = this.rng.range(0, Math.PI);
+      const l = this.rng.range(15, 70);
+      ctx.strokeStyle = this.rng.chance(0.5) ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.3)';
+      ctx.lineWidth = this.rng.range(1, 3.5);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.quadraticCurveTo(x + Math.cos(a + 0.5) * l * 0.5, y + Math.sin(a + 0.5) * l * 0.5, x + Math.cos(a) * l, y + Math.sin(a) * l);
+      ctx.stroke();
+    }
+    this.blotches(ctx, s, 12, 'rgba(0,0,0,0.12)', 10, 40);
+  }
+
+  /** Ferrugem: laranja-marrom em manchas, com descascado escuro. */
+  private drawRustSurface(ctx: Ctx, s: number): void {
+    ctx.fillStyle = '#6b3d26';
+    ctx.fillRect(0, 0, s, s);
+    this.blotches(ctx, s, 40, 'rgba(160,80,30,0.45)', 6, 26);
+    this.blotches(ctx, s, 25, 'rgba(40,20,10,0.5)', 3, 14);
+    this.speckle(ctx, s, 0.12);
+  }
+
+  /** Pedra da estátua: tom de pedra-sabão, manchas, escorridos de chuva e liquens. */
+  private drawStatueStone(ctx: Ctx, s: number): void {
+    ctx.fillStyle = '#d6d0c2';
+    ctx.fillRect(0, 0, s, s);
+    this.blotches(ctx, s, 60, 'rgba(160,150,130,0.25)', 10, 50);
+    this.blotches(ctx, s, 40, 'rgba(240,236,226,0.3)', 8, 40);
+    for (let i = 0; i < 70; i++) {
+      const x = this.rng.range(0, s);
+      const y0 = this.rng.range(0, s);
+      const l = this.rng.range(40, 200);
+      const g = ctx.createLinearGradient(0, y0, 0, y0 + l);
+      g.addColorStop(0, 'rgba(70,65,55,0.28)');
+      g.addColorStop(1, 'rgba(70,65,55,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(x, y0, this.rng.range(2, 6), l);
+    }
+    this.blotches(ctx, s, 14, 'rgba(110,120,70,0.22)', 6, 22);
+    this.speckle(ctx, s, 0.1);
+  }
+
+  /** Encosta vista de longe: copas de árvores em tufos, clareiras de capim e barranco. */
+  private drawHillVegetation(ctx: Ctx, s: number): void {
+    ctx.fillStyle = '#3f6a2c';
+    ctx.fillRect(0, 0, s, s);
+    // Capim mais claro e barrancos de terra.
+    this.blotches(ctx, s, 26, 'rgba(140,150,70,0.35)', 20, 70);
+    this.blotches(ctx, s, 10, 'rgba(130,90,55,0.45)', 10, 35);
+    // Copas: bolinhas sombreadas (luz de cima à esquerda).
+    for (let i = 0; i < 1400; i++) {
+      const x = this.rng.range(0, s);
+      const y = this.rng.range(0, s);
+      const r = this.rng.range(4, 11);
+      const tone = this.rng.range(-20, 25);
+      ctx.fillStyle = `rgba(0,0,0,0.25)`;
+      ctx.beginPath();
+      ctx.arc(x + r * 0.35, y + r * 0.35, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = `rgb(${50 + tone},${92 + tone},${38 + tone * 0.5})`;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(200,230,140,0.18)';
+      ctx.beginPath();
+      ctx.arc(x - r * 0.3, y - r * 0.3, r * 0.45, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  /** Casca de árvore: base marrom, sulcos verticais irregulares, placas claras e musgo. */
+  private drawBark(ctx: Ctx, s: number): void {
+    ctx.fillStyle = '#5a4030';
+    ctx.fillRect(0, 0, s, s);
+    // Placas da casca (faixas verticais de tons diferentes).
+    for (let x = 0; x < s; ) {
+      const w = this.rng.range(6, 18);
+      const t = this.rng.range(-18, 22);
+      ctx.fillStyle = `rgb(${92 + t},${68 + t * 0.8},${50 + t * 0.6})`;
+      ctx.fillRect(x, 0, w, s);
+      x += w;
+    }
+    // Sulcos escuros ondulando de cima a baixo (repetem nas bordas).
+    for (let i = 0; i < 22; i++) {
+      let x = this.rng.range(0, s);
+      ctx.strokeStyle = `rgba(25,15,8,${this.rng.range(0.5, 0.85)})`;
+      ctx.lineWidth = this.rng.range(1.5, 4);
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      for (let y = 0; y <= s; y += 16) {
+        x += this.rng.range(-4, 4);
+        ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+    // Rachaduras horizontais curtas e musgo.
+    ctx.strokeStyle = 'rgba(20,12,6,0.6)';
+    for (let i = 0; i < 40; i++) {
+      const x = this.rng.range(0, s);
+      const y = this.rng.range(0, s);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + this.rng.range(4, 12), y + this.rng.range(-2, 2));
+      ctx.stroke();
+    }
+    this.blotches(ctx, s, 10, 'rgba(90,110,40,0.28)', 10, 35);
+    this.speckle(ctx, s, 0.06);
+  }
+
+  /** Ponta cortada de tronco: anéis de crescimento, rachaduras radiais e casca na borda. */
+  private drawWoodEnd(ctx: Ctx, s: number): void {
+    ctx.fillStyle = '#c49a68';
+    ctx.fillRect(0, 0, s, s);
+    const c = s / 2;
+    for (let r = s * 0.5; r > 2; r -= this.rng.range(3, 7)) {
+      ctx.strokeStyle = `rgba(110,70,35,${this.rng.range(0.25, 0.55)})`;
+      ctx.lineWidth = this.rng.range(0.8, 2);
+      ctx.beginPath();
+      ctx.ellipse(c + this.rng.range(-2, 2), c + this.rng.range(-2, 2), r, r * 0.96, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(40,24,10,0.7)';
+    for (let i = 0; i < 6; i++) {
+      const a = this.rng.range(0, Math.PI * 2);
+      ctx.lineWidth = this.rng.range(1, 2.5);
+      ctx.beginPath();
+      ctx.moveTo(c + Math.cos(a) * 6, c + Math.sin(a) * 6);
+      ctx.lineTo(c + Math.cos(a) * s * this.rng.range(0.25, 0.48), c + Math.sin(a) * s * this.rng.range(0.25, 0.48));
+      ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(70,40,15,0.5)';
+    ctx.beginPath();
+    ctx.arc(c, c, 5, 0, Math.PI * 2);
+    ctx.fill();
+    this.speckle(ctx, s, 0.05);
+  }
+
   /** Chão de mata: terra escura e úmida coberta de folhas secas e verdes, gravetos. */
   private drawForestFloor(ctx: Ctx, s: number): void {
     ctx.fillStyle = '#4a3a26';
@@ -995,14 +1222,38 @@ export class Materials {
     this.blotches(ctx, s, 5, 'rgba(110,80,50,0.18)', 10, 30);
   }
 
+  /**
+   * Folhagem densa (multiplica a cor da copa): fundo escuro entre as folhas, camadas de
+   * folhas com nervura, lado iluminado e lado na sombra. Antes eram pontinhos esparsos e a
+   * copa parecia um bloco verde liso.
+   */
   private drawLeaves(ctx: Ctx, s: number): void {
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = '#5a6a50';
     ctx.fillRect(0, 0, s, s);
-    for (let i = 0; i < 260; i++) {
-      ctx.fillStyle = this.rng.pick(['rgba(0,40,0,0.25)', 'rgba(255,255,200,0.25)', 'rgba(20,60,10,0.18)']);
+    const leaf = (x: number, y: number, len: number, a: number, light: number) => {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(a);
+      const v = Math.round(150 + light * 105);
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
       ctx.beginPath();
-      ctx.ellipse(this.rng.range(0, s), this.rng.range(0, s), this.rng.range(2, 6), this.rng.range(1, 3), this.rng.range(0, Math.PI), 0, Math.PI * 2);
+      ctx.ellipse(1.5, 1.5, len, len * 0.42, 0, 0, Math.PI * 2);
       ctx.fill();
+      ctx.fillStyle = `rgb(${v},${Math.min(255, v + 12)},${Math.round(v * 0.8)})`;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, len, len * 0.42, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(40,60,20,0.35)';
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.moveTo(-len, 0);
+      ctx.lineTo(len, 0);
+      ctx.stroke();
+      ctx.restore();
+    };
+    // Três camadas: do fundo (escuras) para a frente (claras).
+    for (const [n, light] of [[260, 0.15], [220, 0.5], [160, 0.85]] as const) {
+      for (let i = 0; i < n; i++) leaf(this.rng.range(0, s), this.rng.range(0, s), this.rng.range(6, 13), this.rng.range(0, Math.PI), light * this.rng.range(0.8, 1.1));
     }
   }
 

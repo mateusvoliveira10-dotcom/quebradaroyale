@@ -31,6 +31,8 @@ export function pickSpecies(rng: Rng): TreeSpecies {
 function roleMaterial(m: Materials): (role: string) => Material {
   const map: Record<string, Material> = {
     bark: m.bark,
+    bark_log: m.barkLog,
+    wood_end: m.woodEnd,
     cal: m.white,
     leaf: m.foliage,
     leaf_dark: m.foliageDark,

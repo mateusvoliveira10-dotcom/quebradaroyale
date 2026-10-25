@@ -104,8 +104,11 @@ export function buildMata(b: WorldBuilder, r: MataRect): MataResult {
   for (const [ox, oz, along] of [[0, 2.4, true], [2.3, -0.4, false], [-2.3, -0.6, false]] as const) {
     const x = clearing.x + ox;
     const z = clearing.z + oz;
-    b.cylinder({ diameter: 0.45, h: 2.0, x, y: 0.22, z, mat: m.bark, rz: along ? Math.PI / 2 : 0, rx: along ? 0 : Math.PI / 2, tessellation: 10 });
-    b.collider(along ? 2 : 0.45, 0.45, along ? 0.45 : 2, x, 0.22, z);
+    // Tronco de sentar (modelo com casca e pontas cortadas; deitado no eixo X).
+    if (!placeProp(b, 'Tronco_b', x, 0, z, along ? 0 : Math.PI / 2, 0.95)) {
+      b.cylinder({ diameter: 0.45, h: 2.0, x, y: 0.22 - 1.0, z, mat: m.bark, rz: along ? Math.PI / 2 : 0, rx: along ? 0 : Math.PI / 2, tessellation: 10 });
+      b.collider(along ? 2 : 0.45, 0.45, along ? 0.45 : 2, x, 0.22, z);
+    }
   }
   // Abrigo: quatro varas e uma lona azul inclinada.
   const sx = clearing.x - 3.4;
@@ -160,8 +163,13 @@ export function buildMata(b: WorldBuilder, r: MataRect): MataResult {
     if (!inside(x, z, alongX ? 1 : len / 2 + 0.5) || !inside(x + (alongX ? len / 2 : 0), z, 0.5) || !inside(x - (alongX ? len / 2 : 0), z, 0.5)) continue;
     if (nearTrail(x, z, 2 + len / 2) || inClearing(x, z, 2) || !freeOfTrunks(x, z, len / 2 + 1) || nearLoot(x, z, 3)) continue;
     const dia = rng.range(0.35, 0.6);
-    b.cylinder({ diameter: dia, diameterTop: dia * 0.8, h: len, x, y: dia / 2, z, mat: m.bark, rz: alongX ? Math.PI / 2 : 0, rx: alongX ? 0 : Math.PI / 2, tessellation: 9 });
-    b.collider(alongX ? len : dia, dia, alongX ? dia : len, x, dia / 2, z);
+    // Modelo de tronco caído (casca, toco de galho, pontas com anéis), já com colisor.
+    // Antes era um cilindro e, girado, o centro subia meio comprimento: o tronco voava.
+    const big = len > 3.4;
+    if (!placeProp(b, big ? 'Tronco_a' : 'Tronco_b', x, 0, z, (alongX ? 0 : Math.PI / 2) + (rng.chance(0.5) ? Math.PI : 0), (big ? len / 3.6 : len / 2.2) * 0.98)) {
+      b.cylinder({ diameter: dia, diameterTop: dia * 0.8, h: len, x, y: dia / 2 - len / 2, z, mat: m.bark, rz: alongX ? Math.PI / 2 : 0, rx: alongX ? 0 : Math.PI / 2, tessellation: 9 });
+      b.collider(alongX ? len : dia, dia, alongX ? dia : len, x, dia / 2, z);
+    }
     trunks.push([x, z]);
     logs++;
   }

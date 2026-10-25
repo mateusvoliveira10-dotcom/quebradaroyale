@@ -363,7 +363,7 @@ export function addOutskirts(b: WorldBuilder, half: number): void {
  */
 export function addBackdropHills(b: WorldBuilder, rng: Rng, innerRadius: number): void {
   const m = b.mats;
-  const hillMat = m.foliageDark;
+  const hillMat = m.morroFundo;
   const count = 11;
   for (let i = 0; i < count; i++) {
     const angle = (i / count) * Math.PI * 2 + rng.range(-0.15, 0.15);

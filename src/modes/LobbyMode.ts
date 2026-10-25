@@ -1,4 +1,6 @@
-import { Mesh, MeshBuilder, StandardMaterial, Vector3 } from '@babylonjs/core';
+import { Mesh, MeshBuilder, StandardMaterial, TransformNode, Vector3, Vector4 } from '@babylonjs/core';
+import { instantiateModel } from '../world/ModelInstance';
+import { WorldAssets } from '../world/WorldAssets';
 import type { Game } from '../core/Game';
 import { LobbyScene } from '../world/builders/LobbyScene';
 import { WORLD } from '../core/config';
@@ -50,31 +52,52 @@ export class LobbyMode implements GameMode {
       this.stage.push(mesh);
       return mesh;
     };
-    const box = (name: string, w: number, h: number, d: number, x: number, y: number, z: number, mat: StandardMaterial) => {
-      const b = MeshBuilder.CreateBox(name, { width: w, height: h, depth: d }, scene);
+    // UV em metros (`tile` = tamanho de uma repetição): tijolo e concreto sem esticar.
+    const box = (name: string, w: number, h: number, d: number, x: number, y: number, z: number, mat: StandardMaterial, tile = 0) => {
+      const faceUV = tile
+        ? [w, w, d, d].map((u) => new Vector4(0, 0, u / tile, h / tile)).concat([new Vector4(0, 0, w / tile, d / tile), new Vector4(0, 0, w / tile, d / tile)])
+        : undefined;
+      const b = MeshBuilder.CreateBox(name, { width: w, height: h, depth: d, faceUV }, scene);
       b.position.set(s.x + x, y, s.z + z);
       return add(b, mat);
     };
     // Prédio (tijolo aparente) e laje.
-    box('lobbyPredio', 10, STAGE_H, 10, 0, STAGE_H / 2, 0, m.brick);
-    box('lobbyLaje', 10.6, 0.25, 10.6, 0, STAGE_H + 0.02, 0, m.concrete);
-    // Mureta só nas laterais: o fundo (para a comunidade) e a frente ficam livres.
-    box('lobbyMuretaE', 0.2, 0.9, 10.2, -5.1, STAGE_H + 0.6, 0, m.muro);
-    box('lobbyMuretaD', 0.2, 0.9, 10.2, 5.1, STAGE_H + 0.6, 0, m.muro);
-    // Caixa d'água e antena nos cantos (emolduram o personagem sem tapar o fundo).
-    const tank = MeshBuilder.CreateCylinder('lobbyCaixa', { diameterTop: 1.5, diameterBottom: 1.3, height: 1.2, tessellation: 24 }, scene);
-    tank.position.set(s.x - 3.7, STAGE_H + 0.75, s.z + 3.6);
-    add(tank, m.tank);
-    const lid = MeshBuilder.CreateCylinder('lobbyTampa', { diameter: 1.6, height: 0.12, tessellation: 24 }, scene);
-    lid.position.set(s.x - 3.7, STAGE_H + 1.4, s.z + 3.6);
-    add(lid, m.tankLid);
-    const mast = MeshBuilder.CreateCylinder('lobbyAntena', { diameter: 0.05, height: 2.4, tessellation: 6 }, scene);
-    mast.position.set(s.x + 3.9, STAGE_H + 1.3, s.z + 3.9);
-    add(mast, m.metal);
-    const dish = MeshBuilder.CreateSphere('lobbyParabolica', { diameter: 0.9, slice: 0.45, segments: 12 }, scene);
-    dish.position.set(s.x + 3.9, STAGE_H + 2.2, s.z + 3.9);
-    dish.rotation.x = -Math.PI / 2.4;
-    add(dish, m.white);
+    const hq = m.hq;
+    box('lobbyPredio', 10, STAGE_H, 10, 0, STAGE_H / 2, 0, hq.tijolo, 1.2);
+    // Laje de concreto com a borda da viga aparente e um ralo.
+    box('lobbyLaje', 10.6, 0.25, 10.6, 0, STAGE_H + 0.02, 0, hq.concreto, 2);
+    box('lobbyViga', 10.7, 0.3, 10.7, 0, STAGE_H - 0.2, 0, hq.concretoEscuro, 2);
+    const ralo = MeshBuilder.CreateDisc('lobbyRalo', { radius: 0.09, tessellation: 12 }, scene);
+    ralo.rotation.x = Math.PI / 2;
+    ralo.position.set(s.x + 2.2, STAGE_H + 0.151, s.z + 1.8);
+    add(ralo, m.metalDark);
+    // Mureta só nas laterais (reboco pintado com chapisco), com pingadeira de concreto.
+    box('lobbyMuretaE', 0.2, 0.9, 10.2, -5.1, STAGE_H + 0.6, 0, hq.muro, 2.5);
+    box('lobbyMuretaD', 0.2, 0.9, 10.2, 5.1, STAGE_H + 0.6, 0, hq.muro, 2.5);
+    box('lobbyPingE', 0.28, 0.05, 10.3, -5.1, STAGE_H + 1.07, 0, hq.concreto, 2);
+    box('lobbyPingD', 0.28, 0.05, 10.3, 5.1, STAGE_H + 1.07, 0, hq.concreto, 2);
+    // Caixa d'água de fibra e antena (modelos do kit das casas), nos cantos.
+    const kit = WorldAssets.current?.kit;
+    const place = (name: string, x: number, z: number, ry: number, scale: number) => {
+      const model = kit?.get(name);
+      if (!model) return false;
+      const n = new TransformNode(`${name}_lobby`, scene);
+      n.position.set(s.x + x, STAGE_H + 0.15, s.z + z);
+      n.rotation.y = ry;
+      n.scaling.setAll(scale);
+      for (const mesh of instantiateModel(model, (r) => hq.kitRole(r), n, name)) add(mesh, mesh.material as StandardMaterial);
+      return true;
+    };
+    if (!place('Kit_Caixa', -3.7, 3.6, 0.4, 1.1)) {
+      const tank = MeshBuilder.CreateCylinder('lobbyCaixa', { diameterTop: 1.5, diameterBottom: 1.3, height: 1.2, tessellation: 24 }, scene);
+      tank.position.set(s.x - 3.7, STAGE_H + 0.75, s.z + 3.6);
+      add(tank, m.tank);
+    }
+    if (!place('Kit_Antena', 3.9, 3.9, -0.6, 1.2)) {
+      const mast = MeshBuilder.CreateCylinder('lobbyAntena', { diameter: 0.05, height: 2.4, tessellation: 6 }, scene);
+      mast.position.set(s.x + 3.9, STAGE_H + 1.3, s.z + 3.9);
+      add(mast, m.metal);
+    }
 
     for (const mesh of this.stage) mesh.setEnabled(false);
   }

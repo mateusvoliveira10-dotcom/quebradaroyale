@@ -124,6 +124,27 @@ Blender, centenas de MB) e `backups/` não vão para o repositório.
   (`DETAIL_CULL` em `StaticBatcher.ts`), e as armas do chão aparecem até 70 m: a vista do cume
   caiu de 113 para 42 ms por quadro neste computador.
 
+## Lobby e mapa sem cara de "bloco"
+
+- **Modelos do Blender desenhados do avesso:** ao assar a transformação do glTF (que espelha
+  o eixo Z) a ordem dos triângulos invertia e o jogo mostrava o lado de dentro das peças
+  (troncos pretos, móveis escuros, copas "ocas"). Só os carros tinham correção; agora vale
+  para todos os modelos (`WorldAssets.collect`).
+- **Troncos da mata:** eram cilindros girados que subiam meio comprimento e ficavam voando.
+  Agora são modelos (`tools/blender/lobby_props.py` → `lobby.glb`: Tronco_a/b) com casca
+  irregular, toco de galho e pontas cortadas com anéis, no chão e com colisão.
+- **Lobby:** mesa e cadeiras de plástico de bar, engradados vazados com 24 garrafas, isopor
+  com frisos e alça de corda e caixa de som modelados (mesmo `lobby.glb`), com texturas
+  desenhadas (plástico com granulado e riscos, bolinhas de isopor, vinil e tela da caixa).
+  Prédio de tijolo, laje de concreto com viga e ralo, mureta de reboco com pingadeira,
+  churrasqueira de tijolo com boca de fuligem e espetinhos, caixa d'água e antena do kit das
+  casas, guarda-sol com varetas, roupas de verdade no varal (camisetas, bermudas, toalha) e
+  vasos de barro com muda de bananeira. Caixas com UV em metros (textura sem esticar).
+- **Texturas no lugar de cor lisa:** metal escovado com riscos e sujeira, plástico, borracha,
+  sacos de lixo amassados, vergalhão enferrujado, caixa d'água de fibra, estátua em pedra
+  envelhecida com escorridos, casca de árvore com sulcos e musgo, folhagem densa nas copas
+  e morros do horizonte cobertos de mata e capim.
+
 ## Roupas, boné, mata e desempenho
 
 - **Camisa furando com calça/bermuda:** o cós da parte de baixo (0,93 m) ficava colado por
