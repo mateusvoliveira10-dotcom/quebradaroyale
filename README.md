@@ -124,6 +124,21 @@ Blender, centenas de MB) e `backups/` não vão para o repositório.
   (`DETAIL_CULL` em `StaticBatcher.ts`), e as armas do chão aparecem até 70 m: a vista do cume
   caiu de 113 para 42 ms por quadro neste computador.
 
+## Baús, energético e loot como no Fortnite
+
+- **Baús** (`tools/blender/chest.py`, modelo enviado): base e tampa separadas no fecho, com
+  caixa interna de madeira; versão **épica azul** (madeira recolorida), mais rara. Brilho
+  discreto de perto (faíscas douradas; azuis no épico). **E** abre: a tampa sobe com um
+  pequeno quique e fica aberta, e o loot salta para a frente (1 arma + munição; o épico dá 2
+  armas e dois energéticos). Bots também abrem baús.
+- **Energético:** lata que dá +50 de escudo aos poucos (2,2 s), como o gole do Fortnite.
+- **Loot do chão:** poucas armas soltas e só comuns; raras, épicas e lendárias só em baús.
+- **Escolha de arma do Deathmatch** com a foto de cada arma (renderizada pelo jogo).
+- **Placas das áreas:** modelo de madeira (tábuas com moldura, postes, telhadinho) com o
+  nome entalhado. **Carros** de script com carroceria arredondada (subdivisão no Blender).
+- **Chão piscando:** relevo abaixo do chão da comunidade e das áreas planas, camadas da
+  mata separadas e deslocamento de profundidade em trilhas, calçadas, faixas e quadra.
+
 ## Ilha circular estilo Fortnite
 
 - **Mapa circular com relevo** (`src/world/Terrain.ts`): ilha de ~600 m de diâmetro com a

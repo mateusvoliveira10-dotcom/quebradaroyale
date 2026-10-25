@@ -1,3 +1,5 @@
+import { buildWeaponModel, disposeWeaponModel } from '../weapons/WeaponModels';
+import { WEAPONS, WeaponId } from '../weapons/WeaponDefs';
 import { placeAt } from '../world/Places';
 import { Color3, Engine, Matrix, Scene, StandardMaterial, SubMesh, Texture, Vector3 } from '@babylonjs/core';
 import { Appearance, loadAppearance, saveAppearance } from '../appearance/Appearance';
@@ -153,6 +155,18 @@ export class Game {
     const g = GALPAO_CENTER;
     const training = await shot(new Vector3(g.x - 6, 2.4, g.z + 19), new Vector3(g.x + 2, 1.4, g.z - 14), 0.95);
     this.menu.setModeArt({ br, dm, training });
+    // Fotos das armas (escolha de arma do Deathmatch): cada modelo num "estúdio" no alto.
+    for (const id of Object.keys(WEAPONS) as WeaponId[]) {
+      const m = buildWeaponModel(s, id, 1);
+      m.root.position.set(0, 400, 0);
+      m.root.rotation.set(0, Math.PI / 2, 0);
+      m.root.computeWorldMatrix(true);
+      const { min, max } = m.root.getHierarchyBoundingVectors(true);
+      const c = min.add(max).scale(0.5);
+      const size = Math.max(max.x - min.x, max.z - min.z, 0.3);
+      this.weaponPhotos[id] = await renderShot(e, s, { pos: new Vector3(c.x + size * 0.12, c.y + size * 0.16, c.z + size * 0.92), target: c, fov: 0.62, width: 320, height: 180 });
+      disposeWeaponModel(m);
+    }
     this.minimap.setBackground(await renderMapTopDown(e, s, WORLD.radius + 12, 1024), WORLD.radius + 12);
   }
 
@@ -294,6 +308,8 @@ export class Game {
   // ------------------------------------------------------------------ modos
 
   private minimapFresh = false;
+  /** Fotos das armas (data URL por id), feitas na abertura. */
+  readonly weaponPhotos: Partial<Record<WeaponId, string>> = {};
 
   startMode(id: ModeId): void {
     this.audio.unlock();
@@ -502,7 +518,11 @@ export class Game {
       return ray;
     });
     this.playerWeapons.setVisibleAll(p.ctrl.mode !== 'plane');
-    if (useLoot) this.loot.updatePlayer(dt, this.input, this.camera, p, this.playerWeapons);
+    if (useLoot) {
+      this.loot.updatePlayer(dt, this.input, this.camera, p, this.playerWeapons);
+      const pr = this.loot.prompt;
+      this.hud.setPrompt(pr ? pr.text : null, pr?.color);
+    }
     this.hud.setHealth(p.health, p.shield);
   }
 

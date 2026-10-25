@@ -179,11 +179,32 @@ def tronco(name, length, radius, seed):
     collider(objs, f'Col_{name}_1', (0, 0, radius * 0.9), (length, radius * 2, radius * 1.8))
 
 
+def placa():
+    """Placa de área (estilo parque): três tábuas com moldura, dois postes roliços de ponta
+    chanfrada e um telhadinho de duas águas. Frente para −Y (o jogo cola o nome ali)."""
+    b = Builder('PlacaArea')
+    w, h, z0 = 2.6, 0.84, 1.15
+    for k in range(3):
+        b.box((0, 0, z0 + h * (k + 0.5) / 3), (w, 0.07, h / 3 - 0.012), 'wood_plank', bevel=0.012)
+    for s in (-1, 1):
+        b.box((0, -0.005, z0 + (h + 0.04) / 2 * s + h / 2), (w + 0.12, 0.09, 0.06), 'wood_post', bevel=0.012)
+        b.box((s * (w / 2 + 0.03), -0.005, z0 + h / 2), (0.06, 0.09, h + 0.1), 'wood_post', bevel=0.012)
+        b.cyl((s * (w / 2 + 0.16), 0.02, 1.25), 0.075, 2.5, 'wood_post', segs=10)
+        b.cyl((s * (w / 2 + 0.16), 0.02, 2.58), 0.075, 0.16, 'wood_post', segs=10, r2=0.02)
+    # Telhadinho de duas águas.
+    for s in (-1, 1):
+        b.box((0, s * 0.14, z0 + h + 0.2), (w + 0.6, 0.32, 0.035), 'roof', bevel=0.006, rot=(s * -0.45, 0, 0))
+    b.build(objs)
+    collider(objs, 'Col_PlacaArea_1', (-(w / 2 + 0.16), 0.02, 1.25), (0.16, 0.16, 2.5))
+    collider(objs, 'Col_PlacaArea_2', ((w / 2 + 0.16), 0.02, 1.25), (0.16, 0.16, 2.5))
+
+
 mesa()
 cadeira()
 engradado()
 isopor()
 caixa_som()
+placa()
 tronco('Tronco_a', 3.6, 0.28, 0.7)
 tronco('Tronco_b', 2.2, 0.22, 2.3)
 
@@ -202,6 +223,9 @@ COLORS = {
     'metal': ((0.6, 0.6, 0.62), 1.0, 0.3),
     'bark_log': ((0.3, 0.2, 0.12), 0.0, 1.0),
     'wood_end': ((0.75, 0.58, 0.38), 0.0, 0.9),
+    'wood_plank': ((0.55, 0.36, 0.2), 0.0, 0.9),
+    'wood_post': ((0.38, 0.24, 0.13), 0.0, 0.9),
+    'roof': ((0.42, 0.18, 0.12), 0.0, 0.8),
 }
 os.makedirs(os.path.dirname(out_glb), exist_ok=True)
 export(objs, out_glb, COLORS)

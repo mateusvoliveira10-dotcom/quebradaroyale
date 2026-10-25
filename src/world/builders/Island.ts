@@ -355,21 +355,69 @@ function boulder(b: WorldBuilder, rng: Rng, x: number, y: number, z: number, s: 
   b.collider(s * 1.6, s * 1.1, s * 1.6, x, y + s * 0.3, z);
 }
 
-/** Placa de madeira com o nome da área, na borda voltada para o centro da ilha. */
+/**
+ * Placa da área (modelo PlacaArea de lobby_props.py: tábuas com moldura, postes roliços e
+ * telhadinho) na borda voltada para o centro da ilha, com o nome entalhado e pintado na
+ * madeira (textura desenhada por placa).
+ */
 function signAt(b: WorldBuilder, q: TerrainPoi): void {
   const t = Terrain.current!;
   const d = Math.hypot(q.x, q.z);
   const x = q.x - (q.x / d) * (q.r * 0.9);
   const z = q.z - (q.z / d) * (q.r * 0.9);
-  const y = t.height(x, z);
-  const facing: 1 | -1 = Math.abs(q.z) > Math.abs(q.x) ? (q.z > 0 ? -1 : 1) : q.x > 0 ? -1 : 1;
-  const axis: 'x' | 'z' = Math.abs(q.z) > Math.abs(q.x) ? 'z' : 'x';
-  for (const s of [-1, 1]) {
-    const px = axis === 'z' ? x + s * 1.6 : x;
-    const pz = axis === 'z' ? z : z + s * 1.6;
-    b.box({ w: 0.14, h: 2.6, d: 0.14, x: px, z: pz, y: y - 0.2, mat: b.mats.hq.madeira, tile: 0.6, collide: true });
+  const y = t.height(x, z) - 0.05;
+  // Frente da placa (−Z do modelo) virada para o centro da ilha.
+  const ry = Math.atan2(q.x / d, q.z / d);
+  const m = b.mats;
+  const model = prop('PlacaArea');
+  if (!model) {
+    addSign(b, q.name, { x, y: y + 1.6, z, width: 3.8, height: 0.9, facing: 1, bg: '#6b4a2a', fg: '#fff3d6', board: true });
+    return;
   }
-  addSign(b, q.name, { x, y: y + 1.6, z, width: 3.8, height: 0.9, facing, bg: '#6b4a2a', fg: '#fff3d6', board: true, axis });
+  b.model(model, x, y, z, ry, (role) => (role === 'wood_post' ? m.bark : role === 'roof' ? m.hq.telha : m.hq.madeira));
+  const plane = MeshBuilder.CreatePlane('placaNome', { width: 2.5, height: 0.78 }, b.scene);
+  // Um pouco à frente das tábuas (que ficam entre z = −0,035 e +0,035 no modelo).
+  plane.position.set(x - Math.sin(ry) * 0.045, y + 1.15 + 0.42, z - Math.cos(ry) * 0.045);
+  plane.rotation.y = ry;
+  b.addMesh(plane, signMaterial(b, q.name));
+}
+
+/** Nome entalhado: letras queimadas na madeira com borda clara de entalhe e tinta creme. */
+function signMaterial(b: WorldBuilder, name: string): StandardMaterial {
+  const tex = new DynamicTexture(`placa_${name}`, { width: 1024, height: 320 }, b.scene, true);
+  const ctx = tex.getContext() as unknown as CanvasRenderingContext2D;
+  ctx.clearRect(0, 0, 1024, 320);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  let size = 150;
+  ctx.font = `900 ${size}px Georgia, "Times New Roman", serif`;
+  while (ctx.measureText(name).width > 940 && size > 60) {
+    size -= 6;
+    ctx.font = `900 ${size}px Georgia, "Times New Roman", serif`;
+  }
+  // Sulco escuro do entalhe, borda iluminada e a tinta por cima.
+  ctx.fillStyle = 'rgba(30,16,6,0.85)';
+  ctx.fillText(name, 512 + 4, 166 + 5);
+  ctx.fillStyle = 'rgba(255,230,180,0.35)';
+  ctx.fillText(name, 512 - 2, 166 - 2);
+  ctx.fillStyle = '#f4e3b8';
+  ctx.fillText(name, 512, 166);
+  // Tinta gasta: falhas pequenas.
+  ctx.globalCompositeOperation = 'destination-out';
+  for (let i = 0; i < 260; i++) {
+    ctx.fillStyle = `rgba(0,0,0,${0.3 + Math.random() * 0.5})`;
+    ctx.fillRect(Math.random() * 1024, Math.random() * 320, 2 + Math.random() * 6, 1 + Math.random() * 3);
+  }
+  tex.update();
+  tex.hasAlpha = true;
+  const mat = new StandardMaterial(`placa_${name}`, b.scene);
+  mat.diffuseTexture = tex;
+  mat.useAlphaFromDiffuseTexture = true;
+  mat.specularColor = new Color3(0.05, 0.05, 0.05);
+  mat.emissiveColor = new Color3(0.12, 0.1, 0.08);
+  mat.zOffset = -2;
+  mat.metadata = { castShadow: false };
+  return mat;
 }
 
 /** Mar em volta da ilha e a água da lagoa: azul com ondinhas que correm devagar. */

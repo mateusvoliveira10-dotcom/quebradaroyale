@@ -437,8 +437,27 @@ SPECS = {
 def build_car(key, spec, mats):
     bd = Builder(f'Car_{key}')
     f = loft_body(bd, spec)
-    common_details(bd, spec, f, bumper_mat=spec.get('bumper', 'trim'), lights=spec.get('lights', 'rect'), grille=spec.get('grille', True))
     obj = bd.build(mats)
+    # Carroceria arredondada: a seção de 14 pontos deixava o carro quadrado. Uma subdivisão
+    # (Catmull-Clark) só no "loft" arredonda teto, colunas e para-lamas; os detalhes
+    # (para-choques, faróis, rodas) entram depois, sem amolecer.
+    select_only(obj)
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.select_all(action='SELECT')
+    bpy.ops.mesh.remove_doubles(threshold=0.0005)
+    bpy.ops.object.mode_set(mode='OBJECT')
+    sub = obj.modifiers.new('suave', 'SUBSURF')
+    sub.levels = 1
+    sub.render_levels = 1
+    sub.quality = 2
+    bpy.ops.object.modifier_apply(modifier=sub.name)
+    det = Builder(f'Car_{key}_det')
+    common_details(det, spec, f, bumper_mat=spec.get('bumper', 'trim'), lights=spec.get('lights', 'rect'), grille=spec.get('grille', True))
+    dobj = det.build(mats)
+    select_only(obj)
+    dobj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.join()
 
     if 'bed' in spec:
         # Caçamba: recorta a parte de cima da traseira por booleano, deixando paredes de 5 cm.

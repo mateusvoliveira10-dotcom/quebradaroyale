@@ -214,6 +214,21 @@ export class GameAudio {
     if (rarity >= 3) this.tone(base * 2, 0.25, 0.15, 'sine', 0.15);
   }
 
+  /** Baú abrindo: rangido da tampa e o "brilho" do loot (mais rico no épico). */
+  chestOpen(epic: boolean): void {
+    this.noiseBurst(0.35, 0.35, 'bandpass', 420, 6, 0, 0.5);
+    this.tone(180, 0.3, 0.12, 'sawtooth', 0.02, 120);
+    const base = epic ? 784 : 660;
+    for (let i = 0; i < 4; i++) this.tone(base * [1, 1.25, 1.5, 2][i], 0.35, 0.16, 'triangle', 0.25 + i * 0.07);
+    if (epic) this.tone(base * 3, 0.5, 0.1, 'sine', 0.55);
+  }
+
+  /** Goles do energético. */
+  drink(): void {
+    for (let i = 0; i < 3; i++) this.noiseBurst(0.08, 0.3, 'lowpass', 500, 1, i * 0.22);
+    this.tone(520, 0.4, 0.12, 'sine', 0.7, 900);
+  }
+
   /** Dano recebido. */
   hurt(): void {
     this.noiseBurst(0.12, 0.35, 'lowpass', 700, 1);

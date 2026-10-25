@@ -140,12 +140,16 @@ export class Terrain {
     // Áreas planas no nível 0 para as construções (vila, ferro-velho, sítio, campo).
     for (const p of [OUTER_POIS[0], OUTER_POIS[3], OUTER_POIS[5], OUTER_POIS[7]]) {
       const k = 1 - smoothstep(p.r * 0.95, p.r * 1.45, Math.hypot(x - p.x, z - p.z));
-      h = h * (1 - k);
+      // Um pouco abaixo de 0: pisos e quadras assentados em y = 0 não brigam com o chão.
+      h = h * (1 - k) - 0.06 * k;
     }
     // Bacia da lagoa abaixo do nível da água.
     const dl = Math.hypot(x - LAKE.x, z - LAKE.z);
     if (dl < LAKE.r) h = Math.min(h, LAKE.level - 2.2 * (1 - smoothstep(LAKE.r * 0.5, LAKE.r, dl)) + 0.2);
     h *= out;
+    // Dentro e na borda da comunidade o relevo fica abaixo do chão dela (y = 0): os dois no
+    // mesmo plano piscavam (z-fighting) na faixa da borda.
+    if (edge < WORLD.half + 6) h = Math.min(h, -0.08);
     // Prédio do lobby (além do muro norte, perto de x = -8): chão plano.
     const dLobby = Math.hypot(x + 8, z - (WORLD.half + 13));
     h *= smoothstep(14, 26, dLobby);

@@ -189,6 +189,9 @@ export class Materials {
     this.palmCard = this.cardMat('palmCard', this.texture('tex_palmCard', 512, (ctx, s) => this.drawPalmCard(ctx, s), true));
     this.chaoMata = this.make('chaoMata', '#ffffff', { tex: this.texture('tex_chaoMata', 512, (ctx, s) => this.drawForestFloor(ctx, s)), castShadow: false });
     this.trilha = this.make('trilha', '#d2b48a', { tex: dirtTex, castShadow: false });
+    // Camadas de chão por cima de outro chão: puxadas para a frente na profundidade (sem piscar).
+    this.trilha.zOffset = -2;
+    this.chaoMata.zOffset = -1;
     this.field = this.make('field', '#d08a55', { tex: dirtTex, castShadow: false });
     this.glass = this.make('glass', '#2b3a52', { spec: 1.1, power: 96 });
     this.glass.emissiveColor = Color3.White();
@@ -387,6 +390,9 @@ export class Materials {
     foraTex.vScale = 150;
     this.campoFora = this.make('campoFora', '#a8a27a', { tex: foraTex, castShadow: false });
     this.hq = new MaterialsHQ(scene);
+    this.hq.calcada.zOffset = -1;
+    this.hq.asfalto.zOffset = -1;
+    for (const [mat, z] of [[this.cement, -1], [this.field, -1], [this.sidewalk, -1], [this.roadWhite, -3]] as const) mat.zOffset = z;
     // Peças do kit das casas que eram cor lisa (caixa de fibra, plástico, calha, borracha).
     this.hq.caixa.diffuseTexture = this.surfaceTex.plastic;
     this.hq.plastico.diffuseTexture = this.surfaceTex.plastic;

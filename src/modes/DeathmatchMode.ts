@@ -83,7 +83,7 @@ export class DeathmatchMode implements GameMode {
     g.camera.snap();
 
     g.overlays.pickLoadout(
-      PRIMARIES.map((p) => ({ id: p.id, name: WEAPONS[p.id].name, desc: p.desc })),
+      PRIMARIES.map((p) => ({ id: p.id, name: WEAPONS[p.id].name, desc: p.desc, img: g.weaponPhotos[p.id] })),
       this.primary,
       (id) => {
         this.primary = id;

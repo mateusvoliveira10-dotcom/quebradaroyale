@@ -25,6 +25,8 @@ PROPS = {
     'pneus': dict(height=1.05, target=7000, tex=1024),
     # Tambor de 200 litros (0,88 m), com a pintura azul tomada pela ferrugem.
     'barril': dict(height=0.88, target=4000, tex=1024, rust=True),
+    # Baú antigo (base e tampa separadas depois por chest.py): ~0,62 m de altura.
+    'bau': dict(height=0.62, target=8000, tex=1024),
 }
 
 def rustify(img):

@@ -69,6 +69,8 @@ export class WorldAssets {
    * materiais do GLB (ex.: saco_lixo).
    */
   readonly texturedProps = new Map<string, { model: WorldModel; materials: Map<string, Material> }>();
+  /** Baús do loot (`tools/blender/chest.py`): base e tampa separadas, comum e épico (azul). */
+  readonly chests = new Map<'bau' | 'bau_epico', { base: WorldModel; lid: WorldModel; materials: Map<string, Material> }>();
 
   static async load(scene: Scene): Promise<WorldAssets> {
     const base = `${import.meta.env.BASE_URL}assets/world/`;
@@ -90,6 +92,31 @@ export class WorldAssets {
         }
       }),
     );
+    for (const id of ['bau', 'bau_epico'] as const) {
+      try {
+        const c = await LoadAssetContainerAsync(`${base}${id}.glb`, scene);
+        const models = collect(scene, c.meshes);
+        const b = models.get('Bau_base');
+        const l = models.get('Bau_tampa');
+        const materials = new Map<string, Material>();
+        for (const mat of c.materials) {
+          if (mat instanceof PBRMaterial) {
+            mat.reflectionTexture = studioMaterial(scene, 'estudio_ref', '#ffffff', 0, 1).reflectionTexture;
+            mat.environmentIntensity = 0.8;
+          }
+          scene.addMaterial(mat);
+          for (const t of mat.getActiveTextures()) scene.addTexture(t);
+          materials.set(mat.name, mat);
+        }
+        for (const m of c.meshes) m.dispose(false, false);
+        // Interior (caixa interna e forro da tampa): visto dos dois lados.
+        const inner = materials.get('interior');
+        if (inner) inner.backFaceCulling = false;
+        if (b && l) assets.chests.set(id, { base: b, lid: l, materials });
+      } catch (e) {
+        console.warn(`[WorldAssets] ${id}.glb não carregou:`, e);
+      }
+    }
     for (const id of ['saco_lixo', 'pneus', 'barril']) {
       try {
         const p = await loadTexturedProp(scene, `${base}${id}.glb`, id);

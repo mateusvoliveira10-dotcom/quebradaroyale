@@ -1,4 +1,7 @@
-import { Color3, DynamicTexture, GlowLayer, Mesh, MeshBuilder, Scene, StandardMaterial, TransformNode, Vector3 } from '@babylonjs/core';
+import { Color3, Color4, DynamicTexture, GlowLayer, Mesh, MeshBuilder, ParticleSystem, Scene, StandardMaterial, TransformNode, Vector3 } from '@babylonjs/core';
+import { softDot } from '../world/FxTextures';
+import { instantiateModel } from '../world/ModelInstance';
+import { WorldAssets } from '../world/WorldAssets';
 import { ThirdPersonCamera } from '../camera/ThirdPersonCamera';
 import { Actor } from '../combat/Actor';
 import { GameAudio } from '../core/Audio';
@@ -10,7 +13,8 @@ import { WeaponInstance, WeaponSystem } from '../weapons/WeaponSystem';
 import { LootSpot } from '../world/CommunityMap';
 
 export interface LootItem {
-  kind: 'weapon' | 'ammo';
+  /** chest = baú (abre com E); shield = energético (escudo). */
+  kind: 'weapon' | 'ammo' | 'chest' | 'shield';
   pos: Vector3;
   root: TransformNode;
   meshes: Mesh[];
@@ -26,6 +30,13 @@ export interface LootItem {
   visible: boolean;
   /** Brilho/anel/feixe ligados (só de perto: de longe a arma não pode "entregar" onde está). */
   glowOn?: boolean;
+  /** Baú: tampa (gira na dobradiça), épico, já aberto, tempo da abertura, faíscas. */
+  lid?: TransformNode;
+  epic?: boolean;
+  opened?: boolean;
+  openT?: number;
+  lootOut?: boolean;
+  sparkles?: ParticleSystem;
 }
 
 export interface LootPrompt {
@@ -36,12 +47,12 @@ export interface LootPrompt {
 /** Até essa distância (m) o loot brilha (anel, feixe e glow); mais longe é só o objeto no chão. */
 const GLOW_RANGE = 14;
 
-/** Pesos de raridade por nível do ponto de loot. */
-const RARITY_WEIGHTS: Record<number, number[]> = {
-  0: [50, 35, 13, 2, 0],
-  1: [25, 38, 26, 9, 2],
-  2: [6, 22, 38, 25, 9],
-};
+/** Raridades do baú comum e do épico (azul). Arma no chão é sempre comum. */
+const CHEST_WEIGHTS = [22, 40, 27, 9, 2];
+const EPIC_CHEST_WEIGHTS = [0, 6, 36, 44, 14];
+/** Escudo que um energético dá (aos poucos, em ENERGY_TIME s). */
+const ENERGY_SHIELD = 50;
+const ENERGY_TIME = 2.2;
 
 /**
  * Loot espalhado pelo mapa: armas flutuando com anel e feixe de luz na cor da
@@ -55,6 +66,12 @@ export class LootSystem {
   private readonly ammoMats: Record<AmmoType, StandardMaterial>;
   private readonly crateMat: StandardMaterial;
   private nearest: LootItem | null = null;
+  /** Escudo do energético entrando aos poucos. */
+  private readonly drinks: Array<{ actor: Actor; left: number }> = [];
+  private energyMat: StandardMaterial | null = null;
+  private time2 = 0;
+  /** Texto de interação atual do jogador (Hud.setPrompt). */
+  prompt: LootPrompt | null = null;
   private cullTimer = 0;
   private time = 0;
 
@@ -127,17 +144,25 @@ export class LootSystem {
     this.nearest = null;
   }
 
-  /** Sorteia o loot nos pontos do mapa. */
+  /**
+   * Sorteia o loot nos pontos do mapa, como no Fortnite: baús (abrir com E) na maior parte
+   * dos pontos, baús épicos azuis raros, poucas armas soltas no chão (só comuns) e munição.
+   */
   populate(spots: LootSpot[], seed: number): void {
     const rng = new Rng(seed);
     const weaponIds = Object.values(WEAPONS);
     for (const spot of spots) {
-      const weaponChance = spot.tier === 2 ? 0.85 : spot.tier === 1 ? 0.62 : 0.45;
-      if (rng.chance(weaponChance)) {
-        const rarity = pickWeighted(rng, RARITY_WEIGHTS[spot.tier]);
-        const pool = weaponIds.filter((w) => w.minRarity <= rarity);
+      const chestChance = spot.tier === 2 ? 0.72 : spot.tier === 1 ? 0.5 : 0.3;
+      if (rng.chance(chestChance)) {
+        const epic = rng.chance(spot.tier === 2 ? 0.12 : spot.tier === 1 ? 0.05 : 0.02);
+        this.spawnChest(spot.pos.clone(), rng.range(0, Math.PI * 2), epic);
+        continue;
+      }
+      if (rng.chance(0.22)) {
+        // Arma solta no chão: só comum (raras e épicas só saem de baú).
+        const pool = weaponIds.filter((w) => w.minRarity <= 0);
         const def = pickByWeight(rng, pool);
-        this.spawnWeapon(def, rarity, spot.pos.clone());
+        this.spawnWeapon(def, 0, spot.pos.clone());
         const off = new Vector3(rng.range(-0.8, 0.8), 0, rng.range(-0.8, 0.8));
         if (off.length() < 0.5) off.x = 0.6;
         this.spawnAmmo(def.ammo, AMMO[def.ammo].pickup, spot.pos.add(off));
@@ -151,6 +176,147 @@ export class LootSystem {
         }
       }
     }
+  }
+
+  /** Baú do modelo enviado, com a tampa presa na dobradiça de trás. */
+  spawnChest(pos: Vector3, ry: number, epic: boolean): void {
+    const c = WorldAssets.current?.chests.get(epic ? 'bau_epico' : 'bau');
+    if (!c) return;
+    const root = new TransformNode(epic ? 'bauEpico' : 'bau', this.scene);
+    root.position.set(pos.x, pos.y - 0.1, pos.z);
+    root.rotation.y = ry;
+    const mat = (role: string) => c.materials.get(role) ?? null;
+    const meshes = instantiateModel(c.base, mat, root, 'bau_base');
+    // Dobradiça: aresta de trás e de baixo da tampa (+Z no modelo, ver chest.py).
+    const hinge = new Vector3((c.lid.min.x + c.lid.max.x) / 2, c.lid.min.y, c.lid.max.z);
+    const lid = new TransformNode('bauTampa', this.scene);
+    lid.parent = root;
+    lid.position.copyFrom(hinge);
+    for (const m of instantiateModel(c.lid, mat, lid, 'bau_tampa')) {
+      m.position.copyFrom(hinge.scale(-1));
+      meshes.push(m);
+    }
+    // Brilho discreto: faíscas subindo (douradas; azuis no épico) e anel suave no chão.
+    const ring = MeshBuilder.CreateDisc('bauBrilho', { radius: 0.9, tessellation: 32 }, this.scene);
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = 0.03;
+    ring.parent = root;
+    ring.material = this.ringMats[epic ? 2 : 4];
+    ring.visibility = 0.55;
+    ring.isPickable = false;
+    ring.setEnabled(false);
+    meshes.push(ring);
+    const sp = new ParticleSystem('bauFaiscas', 40, this.scene);
+    sp.particleTexture = softDot(this.scene);
+    sp.emitter = new Vector3(pos.x, pos.y + 0.35, pos.z);
+    sp.minEmitBox = new Vector3(-0.42, -0.2, -0.32);
+    sp.maxEmitBox = new Vector3(0.42, 0.35, 0.32);
+    const col = epic ? new Color4(0.45, 0.7, 1, 1) : new Color4(1, 0.82, 0.35, 1);
+    sp.color1 = col;
+    sp.color2 = new Color4(col.r, col.g, col.b, 0.6);
+    sp.colorDead = new Color4(col.r, col.g, col.b, 0);
+    sp.minSize = 0.03;
+    sp.maxSize = 0.07;
+    sp.minLifeTime = 0.8;
+    sp.maxLifeTime = 1.5;
+    sp.emitRate = epic ? 16 : 10;
+    sp.direction1 = new Vector3(-0.1, 1, -0.1);
+    sp.direction2 = new Vector3(0.1, 1, 0.1);
+    sp.minEmitPower = 0.25;
+    sp.maxEmitPower = 0.5;
+    sp.gravity = new Vector3(0, 0.1, 0);
+    sp.blendMode = ParticleSystem.BLENDMODE_ADD;
+    this.items.push({ kind: 'chest', pos: pos.clone(), root, meshes, glowMeshes: [], rarity: epic ? 3 : 1, amount: 1, phase: 0, visible: true, lid, epic, opened: false, openT: 0, sparkles: sp });
+  }
+
+  /** Abre o baú: a tampa sobe (e fica aberta) e o loot salta para a frente. */
+  openChest(it: LootItem, byPlayer: boolean): void {
+    if (it.kind !== 'chest' || it.opened) return;
+    it.opened = true;
+    it.openT = 0;
+    it.sparkles?.stop();
+    it.meshes[it.meshes.length - 1]?.setEnabled(false);
+    if (byPlayer) this.audio.chestOpen(!!it.epic);
+  }
+
+  /** Loot do baú, espalhado na frente dele. */
+  private chestLoot(it: LootItem): void {
+    const rng = new Rng(Math.floor(Math.random() * 1e9));
+    const weaponIds = Object.values(WEAPONS);
+    const fwd = new Vector3(-Math.sin(it.root.rotation.y), 0, -Math.cos(it.root.rotation.y));
+    const side = new Vector3(fwd.z, 0, -fwd.x);
+    const at = (k: number, d = 1.3) => it.root.position.add(fwd.scale(d)).add(side.scale(k)).add(new Vector3(0, 0.1, 0));
+    const n = it.epic ? 2 : 1;
+    for (let i = 0; i < n; i++) {
+      const rarity = pickWeighted(rng, it.epic ? EPIC_CHEST_WEIGHTS : CHEST_WEIGHTS);
+      const pool = weaponIds.filter((w) => w.minRarity <= rarity);
+      const def = pickByWeight(rng, pool);
+      this.spawnWeapon(def, rarity, at(n === 1 ? 0 : i === 0 ? -0.7 : 0.7));
+      this.spawnAmmo(def.ammo, AMMO[def.ammo].pickup, at(i === 0 ? 0.9 : -0.9, 0.9));
+    }
+    if (it.epic || rng.chance(0.55)) this.spawnShield(at(0, 2.1));
+    if (it.epic) this.spawnShield(at(0.8, 2.0));
+  }
+
+  /** Energético (lata): dá escudo aos poucos ao pegar. */
+  spawnShield(pos: Vector3): void {
+    if (!this.energyMat) {
+      const tex = new DynamicTexture('energeticoTex', { width: 256, height: 128 }, this.scene, true);
+      const ctx = tex.getContext() as unknown as CanvasRenderingContext2D;
+      const g = ctx.createLinearGradient(0, 0, 0, 128);
+      g.addColorStop(0, '#1b1f2a');
+      g.addColorStop(1, '#0c0e14');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, 256, 128);
+      ctx.fillStyle = '#39e0ff';
+      ctx.beginPath();
+      ctx.moveTo(0, 70);
+      ctx.lineTo(256, 40);
+      ctx.lineTo(256, 58);
+      ctx.lineTo(0, 88);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '900 30px Impact, "Arial Black", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('ENERGÉTICO', 128, 40);
+      ctx.fillStyle = '#39e0ff';
+      ctx.font = '900 22px Impact, sans-serif';
+      ctx.fillText('+ESCUDO', 128, 112);
+      tex.update();
+      const m = new StandardMaterial('energetico', this.scene);
+      m.diffuseTexture = tex;
+      m.specularColor = new Color3(1, 1, 1);
+      m.specularPower = 80;
+      m.emissiveColor = new Color3(0.25, 0.25, 0.3);
+      this.energyMat = m;
+    }
+    const root = new TransformNode('energetico', this.scene);
+    root.position.copyFrom(pos);
+    const can = MeshBuilder.CreateCylinder('lata', { diameter: 0.14, height: 0.26, tessellation: 24 }, this.scene);
+    can.material = this.energyMat;
+    can.parent = root;
+    can.position.y = 0.6;
+    const top = MeshBuilder.CreateCylinder('lataTampa', { diameterTop: 0.11, diameterBottom: 0.14, height: 0.02, tessellation: 24 }, this.scene);
+    top.material = this.crateMat;
+    top.parent = can;
+    top.position.y = 0.14;
+    const ring = MeshBuilder.CreateDisc('lootRing', { radius: 0.55, tessellation: 32 }, this.scene);
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = 0.04;
+    ring.parent = root;
+    ring.material = this.ringMats[2];
+    for (const m of [can, top, ring]) m.isPickable = false;
+    const model = { root: can } as unknown as WeaponModel;
+    this.items.push({ kind: 'shield', pos, root, meshes: [ring, can, top], glowMeshes: [], rarity: 2, amount: ENERGY_SHIELD, model, phase: Math.random() * 6, visible: true });
+  }
+
+  private drinkShield(it: LootItem, actor: Actor, isPlayer: boolean): void {
+    this.drinks.push({ actor, left: it.amount });
+    if (isPlayer) {
+      this.audio.drink();
+      this.onPickup?.(`Energético: +${it.amount} de escudo`, '#39e0ff');
+    }
+    this.removeItem(it);
   }
 
   get count(): { weapons: number; ammo: number } {
@@ -173,7 +339,8 @@ export class LootSystem {
     let best: LootItem | null = null;
     let bd = maxDist;
     for (const it of this.items) {
-      if (it.kind !== 'weapon' || exclude?.has(it)) continue;
+      // Baú fechado também serve de alvo (o bot abre e pega o que sair).
+      if ((it.kind !== 'weapon' && !(it.kind === 'chest' && !it.opened)) || exclude?.has(it)) continue;
       const d = Vector3.Distance(it.pos, from) + Math.abs(it.pos.y - from.y) * 2;
       if (d < bd) {
         bd = d;
@@ -198,7 +365,7 @@ export class LootSystem {
   }
 
   has(it: LootItem): boolean {
-    return this.items.includes(it);
+    return this.items.includes(it) && !(it.kind === 'chest' && it.opened);
   }
 
   spawnWeapon(def: WeaponDef, rarity: number, pos: Vector3, mag?: number): void {
@@ -278,12 +445,51 @@ export class LootSystem {
     const p = player.position;
     const canPick = player.alive && player.ctrl.mode === 'normal';
 
+    // Energético entrando aos poucos (jogador e bots).
+    for (let i = this.drinks.length - 1; i >= 0; i--) {
+      const dr = this.drinks[i];
+      const add = Math.min(dr.left, (ENERGY_SHIELD / ENERGY_TIME) * dt);
+      dr.left -= add;
+      if (dr.actor.alive) dr.actor.shield = Math.min(dr.actor.maxShield, dr.actor.shield + add);
+      if (dr.left <= 0 || !dr.actor.alive) this.drinks.splice(i, 1);
+    }
+    // Baús: tampa abrindo (com um pequeno quique) e loot saindo no meio da animação.
+    this.time2 += dt;
+    for (const it of this.items) {
+      if (it.kind !== 'chest' || !it.opened || !it.lid || (it.openT ?? 0) >= 1) continue;
+      it.openT = Math.min(1, (it.openT ?? 0) + dt / 0.7);
+      const t = it.openT;
+      const ease = 1 - Math.pow(1 - t, 3);
+      const bounce = Math.sin(t * Math.PI * 3) * (1 - t) * 0.12;
+      it.lid.rotation.x = (ease * 1.95 + bounce) * CHEST_OPEN_SIGN;
+      if (t > 0.45 && !it.lootOut) {
+        it.lootOut = true;
+        this.chestLoot(it);
+      }
+    }
+
     this.cullTimer -= dt;
     if (this.cullTimer <= 0) {
       this.cullTimer = 0.3;
       for (const it of this.items) {
         const d = Vector3.Distance(it.pos, p);
-        const vis = d < (it.kind === 'weapon' ? 70 : 45);
+        if (it.kind === 'chest') {
+          const vis = d < 90;
+          if (vis !== it.visible) {
+            it.visible = vis;
+            it.root.setEnabled(vis);
+          }
+          // Faíscas e anel só de perto (e só enquanto fechado).
+          const near = vis && d < 32 && !it.opened;
+          if (near !== !!it.glowOn) {
+            it.glowOn = near;
+            if (near) it.sparkles?.start();
+            else it.sparkles?.stop();
+            it.meshes[it.meshes.length - 1]?.setEnabled(near);
+          }
+          continue;
+        }
+        const vis = d < (it.kind === 'weapon' || it.kind === 'shield' ? 70 : 45);
         if (vis !== it.visible) {
           it.visible = vis;
           it.root.setEnabled(vis);
@@ -303,7 +509,7 @@ export class LootSystem {
     }
 
     for (const it of this.items) {
-      if (!it.visible || it.kind !== 'weapon' || !it.model) continue;
+      if (!it.visible || (it.kind !== 'weapon' && it.kind !== 'shield') || !it.model) continue;
       it.phase += dt;
       it.model.root.rotation.y += dt * 1.4;
       it.model.root.position.y = 0.62 + Math.sin(it.phase * 2.2) * 0.07;
@@ -317,6 +523,7 @@ export class LootSystem {
     }
 
     this.nearest = null;
+    this.prompt = null;
     if (!canPick) return;
     const fwd = cam.getForward();
     let best = Infinity;
@@ -331,7 +538,11 @@ export class LootSystem {
         this.collectAmmo(it, weapons, true);
         continue;
       }
-      if (it.kind === 'weapon' && dist < 2.2) {
+      if (it.kind === 'shield' && dist < 1.25 && player.shield < player.maxShield) {
+        this.drinkShield(it, player, true);
+        continue;
+      }
+      if ((it.kind === 'weapon' && dist < 2.2) || (it.kind === 'chest' && !it.opened && dist < 2.0)) {
         const facing = dist > 0.01 ? (dx * fwd.x + dz * fwd.z) / dist : 1;
         const score = dist - facing * 0.8;
         if (score < best) {
@@ -341,9 +552,14 @@ export class LootSystem {
       }
     }
 
-    if (this.nearest) {
+    if (this.nearest?.kind === 'chest') {
+      this.prompt = { text: this.nearest.epic ? 'Abrir baú épico [E]' : 'Abrir baú [E]', color: this.nearest.epic ? RARITIES[3].color : RARITIES[4].color };
+      if (input.wasPressed('KeyE')) this.openChest(this.nearest, true);
+    } else if (this.nearest) {
       const s = 1 + Math.sin(this.time * 8) * 0.06;
       this.nearest.model?.root.scaling.setAll(s * 1.15);
+      this.prompt = this.promptFor(weapons);
+      if (this.prompt) this.prompt.text += ' [E]';
       if (input.wasPressed('KeyE')) this.collectWeapon(this.nearest, weapons, player, cam.getForward(), true);
     }
   }
@@ -356,10 +572,17 @@ export class LootSystem {
     const p = bot.position;
     for (let i = this.items.length - 1; i >= 0; i--) {
       const it = this.items[i];
-      if (it.kind !== 'ammo') continue;
-      if (Math.hypot(it.pos.x - p.x, it.pos.z - p.z) < 1.3 && Math.abs(it.pos.y - p.y) < 1.6) this.collectAmmo(it, weapons, false);
+      if (it.kind !== 'ammo' && it.kind !== 'shield') continue;
+      if (Math.hypot(it.pos.x - p.x, it.pos.z - p.z) < 1.3 && Math.abs(it.pos.y - p.y) < 1.6) {
+        if (it.kind === 'ammo') this.collectAmmo(it, weapons, false);
+        else if (bot.shield < bot.maxShield) this.drinkShield(it, bot, false);
+      }
     }
-    if (wanted && this.items.includes(wanted) && Math.hypot(wanted.pos.x - p.x, wanted.pos.z - p.z) < 1.7 && Math.abs(wanted.pos.y - p.y) < 1.8) {
+    if (wanted?.kind === 'chest' && this.has(wanted) && Math.hypot(wanted.pos.x - p.x, wanted.pos.z - p.z) < 1.8 && Math.abs(wanted.pos.y - p.y) < 1.8) {
+      this.openChest(wanted, false);
+      return true;
+    }
+    if (wanted && wanted.kind === 'weapon' && this.items.includes(wanted) && Math.hypot(wanted.pos.x - p.x, wanted.pos.z - p.z) < 1.7 && Math.abs(wanted.pos.y - p.y) < 1.8) {
       this.collectWeapon(wanted, weapons, bot, new Vector3(0, 0, 1), false);
       return true;
     }
@@ -398,6 +621,8 @@ export class LootSystem {
     const idx = this.items.indexOf(it);
     if (idx >= 0) this.items.splice(idx, 1);
     for (const m of it.glowMeshes) this.glow.removeIncludedOnlyMesh(m);
+    it.sparkles?.dispose();
+    if (it.kind === 'shield') it.model = undefined;
     if (it.model) {
       it.model.root.parent = null;
       disposeWeaponModel(it.model);
@@ -407,6 +632,9 @@ export class LootSystem {
     if (this.nearest === it) this.nearest = null;
   }
 }
+
+/** Sinal da rotação que abre a tampa (para cima e para trás) no eixo X da dobradiça. */
+const CHEST_OPEN_SIGN = 1;
 
 function pickWeighted(rng: Rng, weights: number[]): number {
   const total = weights.reduce((a, b) => a + b, 0);

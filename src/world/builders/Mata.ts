@@ -37,7 +37,7 @@ export function buildMata(b: WorldBuilder, r: MataRect): MataResult {
   const loot: MataResult['loot'] = [];
 
   // Chão de mata: terra escura com folhas secas (por cima da terra batida do mapa).
-  b.box({ w, h: 0.01, d, x: cx, z: cz, y: 0.004, mat: m.chaoMata, tile: 6 });
+  b.box({ w, h: 0.01, d, x: cx, z: cz, y: 0.02, mat: m.chaoMata, tile: 6 });
 
   // ----- Trilhas: linha principal de oeste a leste, ondulando, e um ramal para a clareira.
   const main: Array<[number, number]> = [];
@@ -62,7 +62,7 @@ export function buildMata(b: WorldBuilder, r: MataRect): MataResult {
       const [bx, bz] = path[i + 1];
       const len = Math.hypot(bx - ax, bz - az);
       const ry = Math.atan2(bx - ax, bz - az);
-      b.box({ w: TRAIL_W, h: 0.012, d: len + 0.6, x: (ax + bx) / 2, z: (az + bz) / 2, y: 0.012, mat: m.trilha, tile: 2.5, ry });
+      b.box({ w: TRAIL_W, h: 0.012, d: len + 0.6, x: (ax + bx) / 2, z: (az + bz) / 2, y: 0.05, mat: m.trilha, tile: 2.5, ry });
       // Pedrinhas na beirada (de vez em quando).
       for (const side of [-1, 1]) {
         if (!rng.chance(0.55)) continue;
@@ -85,7 +85,7 @@ export function buildMata(b: WorldBuilder, r: MataRect): MataResult {
   const CR = 5.5;
   const disc = MeshBuilder.CreateDisc('clareira', { radius: CR, tessellation: 28 }, b.scene);
   disc.rotation.x = Math.PI / 2;
-  disc.position.set(clearing.x, 0.016, clearing.z);
+  disc.position.set(clearing.x, 0.085, clearing.z);
   b.addMesh(disc, m.trilha);
   clear.push({ x0: clearing.x - CR, x1: clearing.x + CR, z0: clearing.z - CR, z1: clearing.z + CR });
   for (let i = 0; i < 9; i++) {

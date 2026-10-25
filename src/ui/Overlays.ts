@@ -11,6 +11,8 @@ export interface Choice<T extends string> {
   id: T;
   name: string;
   desc: string;
+  /** Foto (data URL), ex.: a arma renderizada pelo jogo. */
+  img?: string;
 }
 
 /** Telas sobrepostas ao jogo. Cada uma recebe callbacks reais de ação. */
@@ -96,7 +98,7 @@ export class Overlays {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'choice' + (c.id === selected ? ' selected' : '');
-      b.innerHTML = `<b>${c.name}</b><span>${c.desc}</span>`;
+      b.innerHTML = `${c.img ? `<img src="${c.img}" alt="" style="display:block;width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:8px;margin-bottom:8px;background:#1b2230">` : ''}<b>${c.name}</b><span>${c.desc}</span>`;
       b.addEventListener('click', () => {
         this.onClick?.();
         pick(c.id);
