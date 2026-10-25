@@ -139,7 +139,7 @@ export class Terrain {
     h = Math.max(h, 0.8);
     // Áreas planas no nível 0 para as construções (vila, ferro-velho, sítio, campo).
     for (const p of [OUTER_POIS[0], OUTER_POIS[3], OUTER_POIS[5], OUTER_POIS[7]]) {
-      const k = 1 - smoothstep(p.r * 0.7, p.r * 1.2, Math.hypot(x - p.x, z - p.z));
+      const k = 1 - smoothstep(p.r * 0.95, p.r * 1.45, Math.hypot(x - p.x, z - p.z));
       h = h * (1 - k);
     }
     // Bacia da lagoa abaixo do nível da água.
@@ -278,16 +278,17 @@ export class Terrain {
         this.meshes.push(m);
       }
     }
-    // Colisão de movimento: blocos de 32 m com grade de 4 m (o moveWithCollisions desliza
-    // por ela; a altura exata dos pés vem de height()).
+    // Colisão de movimento: blocos de 32 m na mesma grade de 2 m (e mesma diagonal) do
+    // desenho e de height(). Com grade de 4 m o chão de colisão ficava abaixo do desenho nas
+    // encostas e os bots afundavam no morro.
     const C = 32;
     for (let z = -EXTENT; z < EXTENT; z += C) {
       for (let x = -EXTENT; x < EXTENT; x += C) {
         if (x >= -WORLD.half && x + C <= WORLD.half && z >= -WORLD.half && z + C <= WORLD.half) continue;
         const pos: number[] = [];
         const idx: number[] = [];
-        const n = C / 4;
-        for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) pos.push(x + i * 4, this.height(x + i * 4, z + j * 4), z + j * 4);
+        const n = C / STEP;
+        for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) pos.push(x + i * STEP, this.height(x + i * STEP, z + j * STEP), z + j * STEP);
         for (let j = 0; j < n; j++) {
           for (let i = 0; i < n; i++) {
             const a = j * (n + 1) + i;

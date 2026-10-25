@@ -423,8 +423,16 @@ function buildWater(b: WorldBuilder): void {
   ocean.material = sea;
   ocean.isPickable = false;
   ocean.receiveShadows = true;
-  const lakeMat = sea.clone('lagoa');
+  // Material próprio com a MESMA textura (clonar o material clona a DynamicTexture, e o
+  // clone nunca fica pronto: a cena nunca ficava "pronta" e a foto do minimapa não saía).
+  const lakeMat = new StandardMaterial('lagoa', scene);
+  lakeMat.diffuseTexture = tex;
   lakeMat.diffuseColor = Color3.FromHexString('#3a8f8a');
+  lakeMat.specularColor = sea.specularColor.clone();
+  lakeMat.specularPower = sea.specularPower;
+  lakeMat.emissiveColor = sea.emissiveColor.clone();
+  lakeMat.alpha = sea.alpha;
+  lakeMat.metadata = { castShadow: false };
   const lake = MeshBuilder.CreateDisc('lagoa', { radius: LAKE.r + 2, tessellation: 40 }, scene);
   lake.rotation.x = Math.PI / 2;
   lake.position.set(LAKE.x, LAKE.level, LAKE.z);

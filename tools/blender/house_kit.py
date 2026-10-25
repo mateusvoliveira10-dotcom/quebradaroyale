@@ -115,24 +115,24 @@ class Piece:
         return o
 
 
-def frame(p, w, h, depth, prof, y, role):
+def frame(p, w, h, depth, prof, y, role, bevel=0.006):
     """Batente/moldura retangular (quatro barras) com o vão w × h centrado em (0, z=0)."""
-    p.box((w + 2 * prof, depth, prof), (0, y, h / 2 + prof / 2), role)
-    p.box((w + 2 * prof, depth, prof), (0, y, -h / 2 - prof / 2), role)
-    p.box((prof, depth, h), (-w / 2 - prof / 2, y, 0), role)
-    p.box((prof, depth, h), (w / 2 + prof / 2, y, 0), role)
+    p.box((w + 2 * prof, depth, prof), (0, y, h / 2 + prof / 2), role, bevel=bevel)
+    p.box((w + 2 * prof, depth, prof), (0, y, -h / 2 - prof / 2), role, bevel=bevel)
+    p.box((prof, depth, h), (-w / 2 - prof / 2, y, 0), role, bevel=bevel)
+    p.box((prof, depth, h), (w / 2 + prof / 2, y, 0), role, bevel=bevel)
 
 
 # ------------------------------------------------------------------ janela de correr 1,2 × 1,0
 W, H = 1.2, 1.0
 REC = 0.08          # recuo do caixilho para dentro do vão
 p = Piece('Kit_Janela')
-frame(p, W, H, 0.07, 0.045, REC, 'aluminio')
+frame(p, W, H, 0.07, 0.045, REC, 'aluminio', bevel=0)
 for i, off in enumerate((-W / 4, W / 4)):
     yy = REC - 0.012 + i * 0.024
-    frame(p, W / 2 - 0.05, H - 0.07, 0.025, 0.03, yy, 'aluminio')
+    frame(p, W / 2 - 0.05, H - 0.07, 0.025, 0.03, yy, 'aluminio', bevel=0)
     p.box((W / 2 - 0.05, 0.006, H - 0.07), (off, yy, 0), 'vidro', bevel=0)
-p.box((W / 2 + 0.02, 0.02, 0.03), (-W / 4, REC - 0.02, H * 0.05), 'aluminio')       # puxador
+p.box((W / 2 + 0.02, 0.02, 0.03), (-W / 4, REC - 0.02, H * 0.05), 'aluminio', bevel=0)       # puxador
 p.box((W + 0.2, 0.2, 0.05), (0, -0.04, -H / 2 - 0.045), 'concreto', bevel=0.01)     # peitoril
 p.done()
 
@@ -148,11 +148,11 @@ p.done()
 
 # ------------------------------------------------------------------ basculante 0,6 × 0,6
 p = Piece('Kit_Basculante')
-frame(p, 0.6, 0.6, 0.06, 0.035, REC, 'aluminio')
+frame(p, 0.6, 0.6, 0.06, 0.035, REC, 'aluminio', bevel=0)
 for i in range(3):
     z = -0.2 + i * 0.2
     p.box((0.58, 0.006, 0.19), (0, REC - 0.03, z), 'vidro', bevel=0, rot=(-0.45, 0, 0))
-    p.box((0.58, 0.012, 0.02), (0, REC - 0.03, z - 0.09), 'aluminio', bevel=0.002)
+    p.box((0.58, 0.012, 0.02), (0, REC - 0.03, z - 0.09), 'aluminio', bevel=0)
 p.box((0.72, 0.16, 0.04), (0, -0.03, -0.32), 'concreto', bevel=0.008)
 p.done()
 

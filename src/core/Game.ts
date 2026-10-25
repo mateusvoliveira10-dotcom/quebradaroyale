@@ -293,8 +293,15 @@ export class Game {
 
   // ------------------------------------------------------------------ modos
 
+  private minimapFresh = false;
+
   startMode(id: ModeId): void {
     this.audio.unlock();
+    // Refaz o fundo do minimapa na primeira partida, já com tudo carregado.
+    if (!this.minimapFresh) {
+      this.minimapFresh = true;
+      void renderMapTopDown(this.engine, this.scene, WORLD.radius + 12, 1024).then((url) => this.minimap.setBackground(url, WORLD.radius + 12));
+    }
     // A música tema fica na abertura e no lobby; a partida começa sem ela.
     music.stop();
     this.overlays.hideAll();

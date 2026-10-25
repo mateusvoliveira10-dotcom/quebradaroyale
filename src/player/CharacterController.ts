@@ -1,3 +1,4 @@
+import { Terrain } from '../world/Terrain';
 import { AbstractMesh, Mesh, MeshBuilder, Ray, Scene, Vector3 } from '@babylonjs/core';
 import { DROP, PLAYER, TRAVERSAL, WORLD } from '../core/config';
 import { ColliderIndex } from '../nav/ColliderIndex';
@@ -388,6 +389,15 @@ export class CharacterController {
     const before = this.root.position.clone();
     this.move(displacement);
     this.applyFence();
+    const terrain = Terrain.current;
+    if (terrain) {
+      const th = terrain.height(this.root.position.x, this.root.position.z);
+      if (this.root.position.y < th - 0.02) {
+        this.root.position.y = th;
+        if (this.velocity.y < 0) this.velocity.y = 0;
+        this.root.computeWorldMatrix(true);
+      }
+    }
     const actual = this.root.position.subtract(before);
 
     if (this.velocity.y > 0 && actual.y < displacement.y * 0.5) this.velocity.y = 0;

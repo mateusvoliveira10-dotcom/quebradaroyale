@@ -44,6 +44,8 @@ export async function renderMapTopDown(engine: Engine, scene: Scene, half: numbe
   cam.maxZ = 90;
   const fog = scene.fogEnabled;
   scene.fogEnabled = false;
+  // Só fotografa com tudo pronto (relevo e mar ainda compilando saíam de fora: fundo marrom).
+  await scene.whenReadyAsync();
   try {
     return await Tools.CreateScreenshotUsingRenderTargetAsync(engine, cam, { width: size, height: size }, 'image/jpeg', 1, true);
   } finally {

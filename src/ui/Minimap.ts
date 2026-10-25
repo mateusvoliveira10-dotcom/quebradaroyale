@@ -80,7 +80,7 @@ export class Minimap {
       cv.width = img.naturalWidth;
       cv.height = img.naturalHeight;
       const c = cv.getContext('2d') as CanvasRenderingContext2D;
-      c.filter = 'brightness(1.7) saturate(1.3) contrast(1.08)';
+      c.filter = 'brightness(1.12) saturate(0.95) contrast(1.05)';
       c.drawImage(img, 0, 0);
       this.bg = cv;
       this.bgHalf = half;

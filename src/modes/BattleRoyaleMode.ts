@@ -110,7 +110,9 @@ export class BattleRoyaleMode implements GameMode {
     g.combat.add(g.player);
 
     this.bots = g.acquireBots(BR_BOTS);
-    const spots = g.map.lootSpots.filter((s) => s.pos.y < 8).sort(() => this.rng.next() - 0.5);
+    // Destinos pela ilha inteira (comunidade e áreas com nome do anel externo), como os
+    // bots do Fortnite: antes todos caíam no centro e se matavam no primeiro minuto.
+    const spots = g.map.lootSpots.filter((s) => s.pos.y < 45).sort(() => this.rng.next() - 0.5);
     this.bots.forEach((b, i) => {
       b.actor.team = i + 1;
       b.actor.kills = 0;
@@ -129,7 +131,15 @@ export class BattleRoyaleMode implements GameMode {
 
     g.drop.begin(
       [g.player, ...this.bots.map((b) => b.actor)],
-      () => this.rng.range(0.28, 0.62),
+      // Salta no trecho do voo mais perto do destino (o avião já está no começo da rota).
+      (a) => {
+        const t = this.bots.find((b) => b.actor === a)?.brain.dropTarget;
+        if (!t) return this.rng.range(0.28, 0.62);
+        const start = g.drop.planePosition;
+        const dir = g.drop.planeDirection;
+        const along = (t.x - start.x) * dir.x + (t.z - start.z) * dir.z;
+        return Math.min(0.92, Math.max(0.06, along / (DROP.planeStartDistance * 2) - 0.04 + this.rng.range(-0.03, 0.03)));
+      },
       (a) => this.bots.find((b) => b.actor === a)?.brain.chuteHeight ?? 50,
     );
     this.zone.start();

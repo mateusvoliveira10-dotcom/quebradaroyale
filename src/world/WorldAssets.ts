@@ -206,6 +206,43 @@ function ownerName(mesh: Node): string | null {
   return name.startsWith('Col_') ? name.replace(/_\d+$/, '') : name;
 }
 
+/**
+ * Junta vértices idênticos (posição, normal e UV iguais). Alguns GLBs vêm com cada
+ * triângulo com vértices próprios (as esquadrias de alumínio tinham 1.248 vértices por
+ * janela para 572 triângulos): no mapa inteiro eram ~4 milhões de vértices só delas.
+ */
+function weld(vd: VertexData): void {
+  const p = vd.positions!;
+  const n = vd.normals;
+  const uv = vd.uvs;
+  const idx = vd.indices;
+  if (!idx || !n) return;
+  const count = p.length / 3;
+  const map = new Map<string, number>();
+  const remap = new Int32Array(count);
+  const np: number[] = [];
+  const nn: number[] = [];
+  const nuv: number[] = [];
+  const r = (v: number) => Math.round(v * 1e4);
+  for (let i = 0; i < count; i++) {
+    const key = `${r(p[i * 3])},${r(p[i * 3 + 1])},${r(p[i * 3 + 2])},${r(n[i * 3] * 10)},${r(n[i * 3 + 1] * 10)},${r(n[i * 3 + 2] * 10)}${uv ? `,${r(uv[i * 2])},${r(uv[i * 2 + 1])}` : ''}`;
+    let k = map.get(key);
+    if (k === undefined) {
+      k = np.length / 3;
+      map.set(key, k);
+      np.push(p[i * 3], p[i * 3 + 1], p[i * 3 + 2]);
+      nn.push(n[i * 3], n[i * 3 + 1], n[i * 3 + 2]);
+      if (uv) nuv.push(uv[i * 2], uv[i * 2 + 1]);
+    }
+    remap[i] = k;
+  }
+  if (np.length / 3 > count * 0.9) return;
+  vd.positions = np;
+  vd.normals = nn;
+  if (uv) vd.uvs = nuv;
+  vd.indices = Array.from(idx, (i) => remap[i]);
+}
+
 function collect(scene: Scene, meshes: ReadonlyArray<{ getTotalVertices(): number } & Node>): Map<string, WorldModel> {
   const out = new Map<string, WorldModel>();
   const get = (name: string): WorldModel => {
@@ -264,6 +301,7 @@ function collect(scene: Scene, meshes: ReadonlyArray<{ getTotalVertices(): numbe
     }
     vd.colors = null;
     vd.tangents = null;
+    weld(vd);
     const role = node.material?.name ?? 'paint';
     const baked = new Mesh(`${owner}_${role}`, scene);
     vd.applyToMesh(baked, false);

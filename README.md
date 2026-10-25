@@ -144,6 +144,11 @@ Blender, centenas de MB) e `backups/` não vão para o repositório.
 - **Modelos enviados:** Kombi (no lugar da perua antiga), sacos de lixo, pilha de pneus e
   tambor com ferrugem assada no Blender (`tools/blender/textured_prop.py`), todos reduzidos de
   ~1–2 milhões de faces para 4–7 mil e com texturas de 1024 px.
+- **Ajustes da ilha:** minimapa com a foto de cima da ilha (a lagoa usava um material que
+  nunca ficava pronto e a foto não saía); bots saltam no trecho do voo mais perto do destino
+  e se espalham pela ilha inteira; colisão do relevo na mesma grade do desenho (bots não
+  afundam nos morros); esquadrias sem chanfro (4,3 → 1 milhão de vértices); Kombi sem o
+  símbolo da marca (`tools/blender/remove_emblem.py`).
 - **Correção grave:** ao juntar os lotes estáticos, a malha-base dos modelos crescia a cada
   lote (índices repetidos centenas de vezes): triângulos esticados ligando árvores ("vigas")
   e muita memória. Agora a primeira malha do lote recebe geometria própria antes da junção.
