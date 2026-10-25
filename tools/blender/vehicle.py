@@ -71,6 +71,9 @@ VEHICLES = {
     'ambulancia': dict(scale=5.2, tex=2048, livery=dict(
         text=[(-0.080, 0.248, 0.228, 0.280)],  # AMBULÂNCIA
     )),
+    # Kombi (modelo enviado): ~4,2 m de comprimento e teto em ~2,05 m. Substitui a "perua"
+    # de cars.py nas ruas.
+    'kombi': dict(scale=4.2, tex=2048),
 }
 CFG = VEHICLES[VID]
 SCALE = CFG['scale']

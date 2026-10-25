@@ -1,4 +1,4 @@
-import { Color3, DynamicTexture, FresnelParameters, Scene, StandardMaterial, Texture } from '@babylonjs/core';
+import { Color3, DynamicTexture, FresnelParameters, Material, Scene, StandardMaterial, Texture } from '@babylonjs/core';
 import { shareTint } from './StaticBatcher';
 import { Rng } from '../utils/random';
 import { MaterialsHQ } from './MaterialsHQ';
@@ -88,6 +88,12 @@ export class Materials {
   /** Mato verde e capim seco (dois lados, sem sombra própria). */
   readonly grass: StandardMaterial;
   readonly grassDry: StandardMaterial;
+  /** Cartões de folhas das árvores (trees.glb): folhas recortadas por transparência. */
+  readonly leafCard: StandardMaterial;
+  readonly leafCardRed: StandardMaterial;
+  readonly palmCard: StandardMaterial;
+  /** Relevo da ilha: detalhe de capim e terra; a cor vem dos vértices (praia, pedra, terra). */
+  readonly terreno: StandardMaterial;
   /** Morros do horizonte: mata fechada, capim e barrancos de terra (no lugar do verde liso). */
   readonly morroFundo: StandardMaterial;
   /** Texturas de superfície comuns (multiplicam a cor): metal, plástico e borracha. */
@@ -176,6 +182,11 @@ export class Materials {
     hillTex.uScale = 9;
     hillTex.vScale = 5;
     this.morroFundo = this.make('morroFundo', '#ffffff', { tex: hillTex, castShadow: false, emissive: 0.04 });
+    const terrenoTex = this.texture('tex_terreno', 512, (ctx, s) => this.drawTerrainDetail(ctx, s));
+    this.terreno = this.make('terreno', '#ffffff', { tex: terrenoTex, castShadow: false, emissive: 0.06 });
+    this.leafCard = this.cardMat('leafCard', this.texture('tex_leafCard', 512, (ctx, s) => this.drawLeafCard(ctx, s, ['#3f9a26', '#52b030', '#66c43a', '#7ad646', '#2f8020']), true));
+    this.leafCardRed = this.cardMat('leafCardRed', this.texture('tex_leafCardRed', 512, (ctx, s) => this.drawLeafCard(ctx, s, ['#d0582a', '#e6743a', '#b8471f', '#66c43a', '#f0903e']), true));
+    this.palmCard = this.cardMat('palmCard', this.texture('tex_palmCard', 512, (ctx, s) => this.drawPalmCard(ctx, s), true));
     this.chaoMata = this.make('chaoMata', '#ffffff', { tex: this.texture('tex_chaoMata', 512, (ctx, s) => this.drawForestFloor(ctx, s)), castShadow: false });
     this.trilha = this.make('trilha', '#d2b48a', { tex: dirtTex, castShadow: false });
     this.field = this.make('field', '#d08a55', { tex: dirtTex, castShadow: false });
@@ -194,9 +205,9 @@ export class Materials {
     this.leafRed = this.make('leafRed', '#b0502a', { tex: leafTex });
     this.palmLeaf = this.make('palmLeaf', '#5a8a38', { tex: leafTex });
     this.palmLeaf.backFaceCulling = false;
-    this.grass = this.make('grass', '#6c9a3a', { tex: noiseTex, castShadow: false });
+    this.grass = this.make('grass', '#62c03a', { tex: noiseTex, castShadow: false, emissive: 0.08 });
     this.grass.backFaceCulling = false;
-    this.grassDry = this.make('grassDry', '#b8a35a', { tex: noiseTex, castShadow: false });
+    this.grassDry = this.make('grassDry', '#c8c060', { tex: noiseTex, castShadow: false, emissive: 0.08 });
     this.grassDry.backFaceCulling = false;
     const cacambaTex = this.texture('tex_cacamba', 256, (ctx, s) => this.drawCacamba(ctx, s));
     this.cacamba = this.make('cacamba', '#f1b81a', { tex: cacambaTex, spec: 0.25, power: 40 });
@@ -888,22 +899,152 @@ export class Materials {
     }
   }
 
+  /** Detalhe do relevo (multiplica a cor dos vértices): folhinhas de capim, torrões e pedriscos. */
+  private drawTerrainDetail(ctx: Ctx, s: number): void {
+    ctx.fillStyle = '#f2f2f2';
+    ctx.fillRect(0, 0, s, s);
+    this.blotches(ctx, s, 40, 'rgba(255,255,255,0.4)', 14, 50);
+    this.blotches(ctx, s, 30, 'rgba(0,0,0,0.07)', 10, 40);
+    for (let i = 0; i < 5000; i++) {
+      const x = this.rng.range(0, s);
+      const y = this.rng.range(0, s);
+      ctx.strokeStyle = this.rng.chance(0.5) ? 'rgba(255,255,230,0.35)' : 'rgba(20,30,10,0.3)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + this.rng.range(-2, 2), y - this.rng.range(3, 8));
+      ctx.stroke();
+    }
+    this.speckle(ctx, s, 0.08);
+  }
+
+  /** Material de cartão de folhas: teste de transparência (recorte), dois lados, sombra recortada. */
+  private cardMat(name: string, tex: DynamicTexture): StandardMaterial {
+    const m = this.make(name, '#ffffff', { tex, spec: 0.08, power: 16, emissive: 0.08 });
+    tex.hasAlpha = true;
+    tex.wrapU = tex.wrapV = Texture.CLAMP_ADDRESSMODE;
+    // A transparência da textura só entra no teste de recorte com isto ligado (sem, o fundo
+    // transparente saía preto); o modo continua sendo recorte, não mistura.
+    m.useAlphaFromDiffuseTexture = true;
+    m.transparencyMode = Material.MATERIAL_ALPHATEST;
+    m.alphaCutOff = 0.42;
+    m.backFaceCulling = false;
+    m.twoSidedLighting = true;
+    return m;
+  }
+
+  /** Cacho de folhas visto de perto: dezenas de folhas pontudas com nervura, sombreadas. */
+  private drawLeafCard(ctx: Ctx, s: number, cols: string[]): void {
+    ctx.clearRect(0, 0, s, s);
+    const c = s / 2;
+    // Folha pintada: forma lobada (tipo carvalho), metade de cima clara, metade de baixo
+    // sombreada, nervura clara e contorno escuro fino (desenho limpo, sem ruído de foto).
+    const leaf = (x: number, y: number, len: number, a: number, col: string, shade: number) => {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(a);
+      const shape = () => {
+        ctx.beginPath();
+        ctx.moveTo(-len, 0);
+        for (let k = 0; k <= 6; k++) {
+          const t = -len + (2 * len * k) / 6;
+          const wv = Math.sin(((t + len) / (2 * len)) * Math.PI) * len * 0.5 * (k % 2 ? 1 : 0.78);
+          ctx.lineTo(t, -wv);
+        }
+        for (let k = 6; k >= 0; k--) {
+          const t = -len + (2 * len * k) / 6;
+          const wv = Math.sin(((t + len) / (2 * len)) * Math.PI) * len * 0.5 * (k % 2 ? 1 : 0.78);
+          ctx.lineTo(t, wv);
+        }
+        ctx.closePath();
+      };
+      shape();
+      ctx.fillStyle = col;
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = 'rgba(20,60,10,0.55)';
+      ctx.stroke();
+      ctx.save();
+      shape();
+      ctx.clip();
+      ctx.fillStyle = `rgba(10,40,5,${shade})`;
+      ctx.fillRect(-len, 0, len * 2, len);
+      ctx.fillStyle = 'rgba(255,255,200,0.18)';
+      ctx.fillRect(-len, -len, len * 2, len * 0.6);
+      ctx.restore();
+      ctx.strokeStyle = 'rgba(230,255,190,0.5)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(-len * 0.85, 0);
+      ctx.lineTo(len * 0.85, 0);
+      ctx.stroke();
+      ctx.restore();
+    };
+    // Galhinhos por baixo.
+    ctx.strokeStyle = 'rgba(70,50,30,1)';
+    for (let i = 0; i < 6; i++) {
+      const a = this.rng.range(0, Math.PI * 2);
+      ctx.lineWidth = this.rng.range(2, 4);
+      ctx.beginPath();
+      ctx.moveTo(c, c);
+      ctx.lineTo(c + Math.cos(a) * s * 0.4, c + Math.sin(a) * s * 0.4);
+      ctx.stroke();
+    }
+    // De baixo (folhas escuras, no meio do cacho) para cima (claras, na borda e no alto).
+    for (let i = 0; i < 150; i++) {
+      const a = this.rng.range(0, Math.PI * 2);
+      const r = Math.sqrt(this.rng.next()) * s * 0.42;
+      const x = c + Math.cos(a) * r;
+      const y = c + Math.sin(a) * r * 0.92;
+      const depth = r / (s * 0.42);
+      const light = Math.min(1, depth * 0.7 + (1 - y / s) * 0.5);
+      const col = cols[Math.min(cols.length - 2, Math.floor(light * (cols.length - 1)))];
+      leaf(x, y, this.rng.range(s * 0.06, s * 0.1), this.rng.range(0, Math.PI), i % 7 === 0 ? cols[cols.length - 1] : col, 0.22 - light * 0.12);
+    }
+  }
+
+  /** Folha de coqueiro: folíolos compridos e finos saindo da nervura, em diagonal. */
+  private drawPalmCard(ctx: Ctx, s: number): void {
+    ctx.clearRect(0, 0, s, s);
+    const cols = ['#4f8a2c', '#5e9a34', '#6faa3c', '#3f7426', '#8ab84a'];
+    for (let i = 0; i < 46; i++) {
+      const x = (i / 46) * s;
+      const len = s * this.rng.range(0.75, 0.95);
+      ctx.save();
+      ctx.translate(x, s * 0.02);
+      ctx.rotate(this.rng.range(0.35, 0.55));
+      ctx.fillStyle = cols[Math.floor(this.rng.range(0, cols.length))];
+      ctx.beginPath();
+      ctx.moveTo(-4, 0);
+      ctx.lineTo(4, 0);
+      ctx.lineTo(1, len);
+      ctx.lineTo(-1, len);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = 'rgba(0,0,0,0.2)';
+      ctx.fillRect(0, 0, 1.5, len * 0.9);
+      ctx.restore();
+    }
+    ctx.fillStyle = '#c9b46a';
+    ctx.fillRect(0, 0, s, s * 0.03);
+  }
+
   /** Casca de árvore: base marrom, sulcos verticais irregulares, placas claras e musgo. */
   private drawBark(ctx: Ctx, s: number): void {
-    ctx.fillStyle = '#5a4030';
+    ctx.fillStyle = '#7a5134';
     ctx.fillRect(0, 0, s, s);
-    // Placas da casca (faixas verticais de tons diferentes).
+    // Placas da casca (faixas verticais largas, tons quentes de desenho).
     for (let x = 0; x < s; ) {
-      const w = this.rng.range(6, 18);
-      const t = this.rng.range(-18, 22);
-      ctx.fillStyle = `rgb(${92 + t},${68 + t * 0.8},${50 + t * 0.6})`;
+      const w = this.rng.range(14, 34);
+      const t = this.rng.range(-14, 18);
+      ctx.fillStyle = `rgb(${128 + t},${86 + t * 0.8},${56 + t * 0.6})`;
       ctx.fillRect(x, 0, w, s);
       x += w;
     }
     // Sulcos escuros ondulando de cima a baixo (repetem nas bordas).
-    for (let i = 0; i < 22; i++) {
+    for (let i = 0; i < 10; i++) {
       let x = this.rng.range(0, s);
-      ctx.strokeStyle = `rgba(25,15,8,${this.rng.range(0.5, 0.85)})`;
+      ctx.strokeStyle = `rgba(60,35,18,${this.rng.range(0.45, 0.7)})`;
       ctx.lineWidth = this.rng.range(1.5, 4);
       ctx.beginPath();
       ctx.moveTo(x, 0);

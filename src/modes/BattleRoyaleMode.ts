@@ -1,3 +1,4 @@
+import { Terrain } from '../world/Terrain';
 import { Vector3 } from '@babylonjs/core';
 import { randomAppearance } from '../appearance/Appearance';
 import { KillEvent } from '../combat/CombatManager';
@@ -60,6 +61,9 @@ export class BattleRoyaleMode implements GameMode {
         out.push({ name, pos: c, color: '#ff8a1f' });
       } else if (f.kind === 'field') {
         out.push({ name: 'CAMPINHO', pos: c, color: '#2bd46b' });
+      } else if (f.kind === 'poi' && f.name) {
+        // Áreas com nome da ilha: placa vista do avião, como no Fortnite.
+        out.push({ name: f.name, pos: c.add(new Vector3(0, (Terrain.current?.height(c.x, c.z) ?? 0) + 12, 0)), color: '#ffd21f' });
       } else if (f.kind === 'mata') {
         out.push({ name: 'MATA', pos: c, color: '#7bd44b' });
       }

@@ -1,4 +1,5 @@
-import { AbstractMesh, Axis, Vector3 } from '@babylonjs/core';
+import { AbstractMesh, Axis, Mesh, Vector3 } from '@babylonjs/core';
+import { Terrain } from '../world/Terrain';
 
 /** Caixa orientada (os colisores do mapa são todos caixas). */
 interface Obb {
@@ -133,6 +134,8 @@ export class ColliderIndex {
       }
     }
     for (const m of this.extra) out.push(m);
+    // Relevo da ilha: blocos de colisão grossos perto do ponto.
+    Terrain.current?.collisionAround(x, z, r, out as Mesh[]);
     return out;
   }
 
@@ -142,6 +145,8 @@ export class ColliderIndex {
 
   /** O ponto está dentro de algum colisor (com folga opcional)? */
   isInsideSolid(p: Vector3, margin = 0): boolean {
+    const t = Terrain.current;
+    if (t && p.y < t.height(p.x, p.z) - 0.05 - margin) return true;
     for (const o of this.near(p.x, p.z)) {
       if (p.y < o.minY - margin || p.y > o.maxY + margin) continue;
       const dx = p.x - o.c.x;
@@ -185,6 +190,11 @@ export class ColliderIndex {
       const y = fromY - hit.t;
       if (!best || y > best.y) best = { y, ny: Math.abs(hit.ny) };
     }
+    const t = Terrain.current;
+    if (t) {
+      const th = t.height(x, z);
+      if (th <= fromY + 0.01 && (!best || th > best.y)) best = { y: th, ny: t.slopeNy(x, z) };
+    }
     return best;
   }
 
@@ -210,6 +220,14 @@ export class ColliderIndex {
         if (hit && (best === null || hit.t < best.t)) best = { t: hit.t, o, axis: hit.axis, sign: hit.sign };
       }
     }
+    const tt = Terrain.current?.raycast(origin, dir, best ? best.t : len) ?? null;
+    if (tt !== null && (!best || tt < best.t)) {
+      const p = origin.add(dir.scale(tt));
+      const t = Terrain.current!;
+      const nx = t.height(p.x - 0.5, p.z) - t.height(p.x + 0.5, p.z);
+      const nz = t.height(p.x, p.z - 0.5) - t.height(p.x, p.z + 0.5);
+      return { distance: tt, point: p, normal: new Vector3(nx, 1, nz).normalize() };
+    }
     if (!best) return null;
     const n = [best.o.ax, best.o.ay, best.o.az][best.axis].scale(best.sign);
     return { distance: best.t, point: origin.add(dir.scale(best.t)), normal: n };
@@ -221,6 +239,9 @@ export class ColliderIndex {
     const len = d.length();
     if (len < 1e-4) return false;
     d.scaleInPlace(1 / len);
+    // Morro no meio do caminho tapa a visão.
+    const tt = Terrain.current?.raycast(a, d, len) ?? null;
+    if (tt !== null && tt > 0.05 && tt < len - 0.05) return true;
     // Percorre os blocos atravessados pelo segmento.
     const seen = new Set<Obb>();
     const steps = Math.ceil(len / (this.chunk * 0.5)) + 1;

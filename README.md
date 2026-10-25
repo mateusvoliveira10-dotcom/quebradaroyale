@@ -124,6 +124,30 @@ Blender, centenas de MB) e `backups/` não vão para o repositório.
   (`DETAIL_CULL` em `StaticBatcher.ts`), e as armas do chão aparecem até 70 m: a vista do cume
   caiu de 113 para 42 ms por quadro neste computador.
 
+## Ilha circular estilo Fortnite
+
+- **Mapa circular com relevo** (`src/world/Terrain.ts`): ilha de ~600 m de diâmetro com a
+  comunidade plana no meio; em volta, morros, vales, o Pico do Mirante, a bacia da Lagoa Azul
+  e a cava da Pedreira, até a praia e o mar. A mesma altura serve para o desenho, a colisão
+  de movimento (blocos de malha), o piso dos bots (`NavGrid`), as balas, a linha de visão e o
+  pouso. O muro da comunidade saiu; o limite agora é a beira da praia (cerca circular).
+- **Áreas com nome** (`src/world/Places.ts`, `builders/Island.ts`): Vila dos Pescadores (casas e
+  píer), Lagoa Azul (deck e casinha), Pedreira (pedras, brita, caçambas), Ferro-Velho
+  (carcaças empilhadas, pneus, tambores), Pico do Mirante (torre e mirante), Sítio do Seu Zé
+  (casa, horta, cerca), Mata do Sabiá (cabana) e Campo de Várzea, mais as da comunidade
+  (Quebrada Central, Morro da Paz, Campinho...). O nome aparece grande na tela ao entrar na
+  área, no minimapa e nas placas vistas do avião.
+- **Estilo único, cartoon bem-feito:** árvores novas (`tools/blender/trees.py`) com tronco,
+  galhos e copa de cachos de folhas pintadas (cartões com recorte), em 6 espécies, mais
+  arbustos; capim por toda a ilha; texturas de foto das casas viraram pintura
+  (`tools/blender/stylize_textures.py`); céu, névoa e cores mais vivos.
+- **Modelos enviados:** Kombi (no lugar da perua antiga), sacos de lixo, pilha de pneus e
+  tambor com ferrugem assada no Blender (`tools/blender/textured_prop.py`), todos reduzidos de
+  ~1–2 milhões de faces para 4–7 mil e com texturas de 1024 px.
+- **Correção grave:** ao juntar os lotes estáticos, a malha-base dos modelos crescia a cada
+  lote (índices repetidos centenas de vezes): triângulos esticados ligando árvores ("vigas")
+  e muita memória. Agora a primeira malha do lote recebe geometria própria antes da junção.
+
 ## Lobby e mapa sem cara de "bloco"
 
 - **Modelos do Blender desenhados do avesso:** ao assar a transformação do glTF (que espelha

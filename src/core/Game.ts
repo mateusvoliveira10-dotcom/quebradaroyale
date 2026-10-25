@@ -1,3 +1,4 @@
+import { placeAt } from '../world/Places';
 import { Color3, Engine, Matrix, Scene, StandardMaterial, SubMesh, Texture, Vector3 } from '@babylonjs/core';
 import { Appearance, loadAppearance, saveAppearance } from '../appearance/Appearance';
 import { Bot } from '../bots/Bot';
@@ -52,7 +53,7 @@ const BOT_NAMES = ['Biel do Morro', 'MC Pivete', 'Jão da Laje', 'Dudu Treta', '
 /** Bots criados na tela de carregamento (o Battle Royale usa 29). */
 const WARM_BOTS = 29;
 /** Centro do Galpão da Quebrada (longe do mapa principal). */
-const GALPAO_CENTER = new Vector3(0, 0, 430);
+const GALPAO_CENTER = new Vector3(0, 0, 560);
 
 /** Monta engine, cena, mundos e sistemas; gerencia os modos de jogo. */
 export class Game {
@@ -152,7 +153,7 @@ export class Game {
     const g = GALPAO_CENTER;
     const training = await shot(new Vector3(g.x - 6, 2.4, g.z + 19), new Vector3(g.x + 2, 1.4, g.z - 14), 0.95);
     this.menu.setModeArt({ br, dm, training });
-    this.minimap.setBackground(await renderMapTopDown(e, s, WORLD.half + 6, 1024), WORLD.half + 6);
+    this.minimap.setBackground(await renderMapTopDown(e, s, WORLD.radius + 12, 1024), WORLD.radius + 12);
   }
 
   private constructor(canvas: HTMLCanvasElement, engine: Engine, scene: Scene) {
@@ -191,7 +192,7 @@ export class Game {
     // Babylon percorria todas a cada frame. Movimento, câmera, tiros e escalada
     // consultam o índice espacial (ColliderIndex), que guarda as malhas.
     for (const c of this.world.colliders) this.scene.removeMesh(c);
-    this.nav = new NavGrid(this.colliders, WORLD.half);
+    this.nav = new NavGrid(this.colliders, WORLD.radius + 10);
 
     // ---------- Combate, loot, avião ----------
     this.effects = new WeaponEffects(this.scene, this.env.glow);
@@ -211,7 +212,7 @@ export class Game {
       }
     };
     this.loot = new LootSystem(this.scene, this.env.glow, this.audio);
-    this.drop = new DropSequence(this.scene, this.audio, WORLD.half);
+    this.drop = new DropSequence(this.scene, this.audio, WORLD.radius);
 
     // ---------- Jogador ----------
     const ctrl = new CharacterController(this.scene, 'jogador', this.colliders);
@@ -612,6 +613,9 @@ export class Game {
 
   // ------------------------------------------------------------------ loop
 
+  private placeCheck = 0;
+  private lastPlace: string | null = null;
+
   private update(): void {
     const dt = Math.min(this.engine.getDeltaTime() / 1000, 1 / 30);
     const waiting = this.updateCaptureGate(dt);
@@ -624,6 +628,14 @@ export class Game {
       this.effects.update(dt);
       const v = this.player.ctrl.velocity;
       const p = this.player.position;
+      // Nome da área ao entrar nela (a pé ou no ar, nunca no lobby).
+      this.placeCheck -= dt;
+      if (this.placeCheck <= 0) {
+        this.placeCheck = 0.5;
+        const place = this.mode === this.lobby || !this.player.alive ? null : placeAt(p.x, p.z);
+        if (place && place !== this.lastPlace) this.hud.showPlace(place);
+        this.lastPlace = place;
+      }
       this.hud.update(dt, this.playerWeapons, this.mode !== this.lobby && !!this.playerWeapons.current && this.player.ctrl.mode === 'normal' && this.player.alive, {
         fps: this.engine.getFps(),
         speed: Math.hypot(v.x, v.z),

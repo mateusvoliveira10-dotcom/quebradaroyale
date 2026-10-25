@@ -50,8 +50,16 @@ export interface CombatPose {
   firing: boolean;
 }
 
-/** Face interna do muro da comunidade (0,4 m de espessura a partir de WORLD.half) menos o raio. */
-export const MAP_FENCE = { cx: 0, cz: 0, half: WORLD.half - PLAYER.radius - 0.05 };
+/** Limite da ilha: um pouco além da linha da praia (dá para molhar os pés, não para nadar). */
+export const MAP_FENCE: Fence = { cx: 0, cz: 0, half: WORLD.extent, r: WORLD.radius + 8 };
+
+/** Cerca invisível: quadrada (half) ou circular (r, quando definido). */
+export interface Fence {
+  cx: number;
+  cz: number;
+  half: number;
+  r?: number;
+}
 
 const PROBE_LIFT = 0.6;
 /** Gravidade da queda livre (m/s²). */
@@ -99,13 +107,13 @@ export class CharacterController {
     return this.facing;
   }
   /** Área válida do modo atual (centro e meia-largura). Fora dela = posição inválida. */
-  bounds = { cx: 0, cz: 0, half: WORLD.half + 2 };
+  bounds = { cx: 0, cz: 0, half: WORLD.extent };
   /**
    * Cerca invisível (lado de dentro do muro da comunidade): o personagem nunca passa dela,
    * nem por cima do muro (a partir de um telhado) nem planando no paraquedas. null = sem cerca
    * (galpão de treino, que tem paredes próprias).
    */
-  fence: { cx: number; cz: number; half: number } | null = MAP_FENCE;
+  fence: Fence | null = MAP_FENCE;
 
   /** Ao tocar o chão vindo do ar (velocidade de queda em m/s). */
   onLand: ((fallSpeed: number) => void) | null = null;
@@ -436,6 +444,7 @@ export class CharacterController {
 
   private insideFence(p: Vector3): boolean {
     const f = this.fence;
+    if (f?.r !== undefined) return Math.hypot(p.x - f.cx, p.z - f.cz) <= f.r;
     return !f || (Math.abs(p.x - f.cx) <= f.half && Math.abs(p.z - f.cz) <= f.half);
   }
 
@@ -447,6 +456,22 @@ export class CharacterController {
     let changed = false;
     const lx = p.x - f.cx;
     const lz = p.z - f.cz;
+    if (f.r !== undefined) {
+      const d = Math.hypot(lx, lz);
+      if (d > f.r) {
+        const nx = lx / d;
+        const nz = lz / d;
+        p.x = f.cx + nx * f.r;
+        p.z = f.cz + nz * f.r;
+        const vOut = this.velocity.x * nx + this.velocity.z * nz;
+        if (vOut > 0) {
+          this.velocity.x -= nx * vOut;
+          this.velocity.z -= nz * vOut;
+        }
+        this.root.computeWorldMatrix(true);
+      }
+      return;
+    }
     if (Math.abs(lx) > f.half) {
       p.x = f.cx + Math.sign(lx) * f.half;
       if (this.velocity.x * lx > 0) this.velocity.x = 0;
@@ -520,7 +545,15 @@ export class CharacterController {
     // Perto da borda do mapa, um "vento" leva de volta para dentro (sem pousar fora do muro).
     const inward = new Vector3();
     const f = this.fence;
-    if (f) {
+    if (f?.r !== undefined) {
+      const p = this.root.position;
+      const lx = p.x - f.cx;
+      const lz = p.z - f.cz;
+      const d = Math.hypot(lx, lz) || 1;
+      const over = clamp((d - (f.r - 30)) / 24, 0, 1);
+      inward.x = -(lx / d) * over * (steer + 4);
+      inward.z = -(lz / d) * over * (steer + 4);
+    } else if (f) {
       const p = this.root.position;
       for (const axis of ['x', 'z'] as const) {
         const l = p[axis] - (axis === 'x' ? f.cx : f.cz);

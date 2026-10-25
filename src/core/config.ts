@@ -72,7 +72,7 @@ export const DROP = {
   planeAltitude: 125,
   planeSpeed: 38,
   /** Distância do centro onde o avião nasce/some. */
-  planeStartDistance: 250,
+  planeStartDistance: 430,
   freefallTerminal: 32,
   freefallDiveTerminal: 48,
   freefallSteer: 14,
@@ -92,4 +92,8 @@ export const WORLD = {
   half: 150,
   /** Metade da comunidade murada no centro do mapa (o mapa original, 148 × 148 m). */
   community: 74,
+  /** Raio da ilha até a linha da praia (m): a comunidade de 300 m fica no meio. */
+  radius: 300,
+  /** Metade do quadrado que cobre a ilha e um pouco de mar (grade do relevo, navegação, minimapa). */
+  extent: 340,
 };

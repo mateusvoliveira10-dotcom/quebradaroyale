@@ -13,7 +13,9 @@ interface Phase {
  * mapa de 300 m com 30 participantes (a primeira zona ainda pega boa parte do mapa).
  */
 const PHASES: Phase[] = [
-  { wait: 90, shrink: 50, radius: 115, damage: 2 },
+  // Ilha de 600 m: a primeira zona pega boa parte dela; depois o ritmo é o do mapa antigo.
+  { wait: 100, shrink: 60, radius: 200, damage: 1 },
+  { wait: 75, shrink: 50, radius: 115, damage: 2 },
   { wait: 60, shrink: 40, radius: 70, damage: 3 },
   { wait: 45, shrink: 35, radius: 40, damage: 5 },
   { wait: 35, shrink: 30, radius: 20, damage: 8 },
@@ -95,7 +97,7 @@ export class SafeZone {
   }
 
   start(): void {
-    this.center.set(this.rng.range(-25, 25), 0, this.rng.range(-25, 25));
+    this.center.set(this.rng.range(-60, 60), 0, this.rng.range(-60, 60));
     this.radius = this.mapHalf * 1.5;
     this.phaseIndex = 0;
     this.state = 'wait';

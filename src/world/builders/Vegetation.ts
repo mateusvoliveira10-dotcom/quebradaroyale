@@ -10,16 +10,21 @@ import { WorldBuilder } from '../WorldBuilder';
  * que é um único tufo repetido por thin instances (1 draw call para o mapa inteiro).
  */
 
-export type TreeSpecies = 'mangueira' | 'amendoeira' | 'coqueiro' | 'calcada';
+export type TreeSpecies = 'mangueira' | 'amendoeira' | 'coqueiro' | 'calcada' | 'copa' | 'copa2';
 const SPECIES: ReadonlyArray<[TreeSpecies, number]> = [
-  ['mangueira', 0.3],
-  ['amendoeira', 0.25],
-  ['calcada', 0.25],
-  ['coqueiro', 0.2],
+  ['mangueira', 0.2],
+  ['amendoeira', 0.15],
+  ['calcada', 0.15],
+  ['coqueiro', 0.14],
+  ['copa', 0.2],
+  ['copa2', 0.16],
 ];
 /** Raio aproximado da copa (m, escala 1): usado para não enfiar a copa nas casas. */
-const CANOPY: Record<TreeSpecies, number> = { mangueira: 3.6, amendoeira: 3.4, calcada: 2.1, coqueiro: 2.2 };
-const HEIGHT: Record<TreeSpecies, number> = { mangueira: 7.5, amendoeira: 8, calcada: 5.5, coqueiro: 9.5 };
+const CANOPY: Record<TreeSpecies, number> = { mangueira: 3.6, amendoeira: 3.4, calcada: 2.1, coqueiro: 2.2, copa: 2.9, copa2: 2.4 };
+const HEIGHT: Record<TreeSpecies, number> = { mangueira: 7.5, amendoeira: 8, calcada: 5.5, coqueiro: 9.5, copa: 8.5, copa2: 6.8 };
+
+/** Arbustos folhosos (trees.glb): sem colisão, dá para atravessar e se esconder. */
+export const BUSHES = ['Arbusto_a', 'Arbusto_b'] as const;
 
 export function pickSpecies(rng: Rng): TreeSpecies {
   let r = rng.next();
@@ -31,6 +36,10 @@ export function pickSpecies(rng: Rng): TreeSpecies {
 function roleMaterial(m: Materials): (role: string) => Material {
   const map: Record<string, Material> = {
     bark: m.bark,
+    bark_base: m.wood,
+    leaf_card: m.leafCard,
+    leaf_card_red: m.leafCardRed,
+    palm_card: m.palmCard,
     bark_log: m.barkLog,
     wood_end: m.woodEnd,
     cal: m.white,
@@ -92,6 +101,31 @@ export function placeProp(b: WorldBuilder, name: string, x: number, y: number, z
   const model = prop(name);
   if (!model) return false;
   b.model(model, x, y, z, ry, roleMaterial(b.mats), { scale });
+  return true;
+}
+
+/**
+ * Prop enviado com textura própria (pneus, barril...) em (x, y, z), com caixa de colisão
+ * `col` (largura, altura) quando dada. false = modelo não carregou.
+ */
+export function placeTextured(b: WorldBuilder, id: string, x: number, y: number, z: number, ry: number, scale = 1, col?: [number, number]): boolean {
+  const p = WorldAssets.current?.texturedProps.get(id);
+  if (!p) return false;
+  b.model(p.model, x, y, z, ry, (role) => p.materials.get(role) ?? null, { scale, collide: false });
+  if (col) b.collider(col[0] * scale, col[1] * scale, col[0] * scale, x, y + (col[1] * scale) / 2, z, 0, ry, 0);
+  return true;
+}
+
+/** Monte de 2 a 4 sacos de lixo (saco_lixo.glb) em volta de (x, z). false = modelo não carregou. */
+export function placeBagPile(b: WorldBuilder, rng: Rng, x: number, y: number, z: number, ry: number): boolean {
+  const p = WorldAssets.current?.texturedProps.get('saco_lixo');
+  if (!p) return false;
+  const n = rng.int(2, 4);
+  for (let i = 0; i < n; i++) {
+    const a = ry + (i / n) * Math.PI * 2;
+    const d = i === 0 ? 0 : rng.range(0.35, 0.55);
+    b.model(p.model, x + Math.cos(a) * d, y, z + Math.sin(a) * d, rng.range(0, Math.PI * 2), (role) => p.materials.get(role) ?? null, { scale: rng.range(0.8, 1.15), collide: false });
+  }
   return true;
 }
 
@@ -233,8 +267,8 @@ export function scatterVegetation(b: WorldBuilder, o: ScatterOptions): void {
     bananas++;
   }
 
-  // Trepadeiras subindo pelo lado de dentro do muro.
-  for (let i = 0; i < 40; i++) {
+  // Trepadeiras subindo pelo lado de dentro do muro (o muro saiu com a ilha: nenhuma).
+  for (let i = 0; i < 0; i++) {
     const side = rng.int(0, 3);
     const p = rng.range(-lim + 2, lim - 2);
     const [x, z, nx, nz] = side === 0 ? [p, o.half - 0.03, 0, -1] : side === 1 ? [p, -o.half + 0.03, 0, 1] : side === 2 ? [o.half - 0.03, p, -1, 0] : [-o.half + 0.03, p, 1, 0];
@@ -262,7 +296,7 @@ export function scatterVegetation(b: WorldBuilder, o: ScatterOptions): void {
     // nome, quantidade, meia-largura do espaço livre, altura
     ['BarricadaPneus', 10, 1.7, 1.0],
     ['BarricadaMadeira', 8, 1.6, 1.3],
-    ['PilhaPneus', 16, 0.5, 0.9],
+    ['PilhaPneus', 26, 0.5, 1.1],
     ['Pneu', 28, 0.4, 0.3],
     ['Lixo_a', 10, 0.8, 0.8],
     ['Lixo_b', 10, 0.8, 0.8],
@@ -279,10 +313,49 @@ export function scatterVegetation(b: WorldBuilder, o: ScatterOptions): void {
       // Gente consegue passar em volta: exige uma folga de 1,2 m além do próprio objeto.
       if (!obstacles.free(x, z, half + 1.2, half + 1.2, gy + 0.05, gy + 2.2)) continue;
       const ry = rng.range(0, Math.PI * 2);
+      // Pilhas de pneus: o modelo enviado (com textura).
+      if (name === 'PilhaPneus' && placeTextured(b, 'pneus', x, gy, z, ry, rng.range(0.9, 1.1), [0.85, 1.05])) {
+        obstacles.reserve(x, z, half, half, gy, gy + height);
+        placed++;
+        continue;
+      }
+      // Montes de lixo: sacos do modelo enviado (com textura), 2 a 4 encostados.
+      if (name.startsWith('Lixo_') && placeBagPile(b, rng, x, gy, z, ry)) {
+        obstacles.reserve(x, z, half, half, gy, gy + height);
+        placed++;
+        continue;
+      }
       placeProp(b, name, x, gy, z, ry, rng.range(0.92, 1.08));
       obstacles.reserve(x, z, half, half, gy, gy + height);
       placed++;
     }
+  }
+
+  // Arbustos folhosos nos terrenos livres (sem colisão: dá para passar por dentro).
+  let bushes = 0;
+  for (let tries = 0; tries < 3000 && bushes < 70; tries++) {
+    const x = rng.range(-lim, lim);
+    const z = rng.range(-lim, lim);
+    const gy = ground(x, z);
+    if (blocked(x, z, 0.8) || nearEdge(x, z, 1.2) || nearLoot(x, z, 1.5)) continue;
+    if (!obstacles.free(x, z, 1.4, 1.4, gy + 0.05, gy + 1.5)) continue;
+    placeProp(b, rng.pick(BUSHES), x, gy, z, rng.range(0, Math.PI * 2), rng.range(0.85, 1.2));
+    obstacles.reserve(x, z, 1.2, 1.2, gy, gy + 1.4);
+    bushes++;
+  }
+
+  // Tambores enferrujados (sozinhos ou em dupla) pelos terrenos e becos.
+  let drums = 0;
+  for (let tries = 0; tries < 3000 && drums < 36; tries++) {
+    const x = rng.range(-lim, lim);
+    const z = rng.range(-lim, lim);
+    const gy = ground(x, z);
+    if (blocked(x, z, 0.4) || nearEdge(x, z, 0.8) || nearLoot(x, z, 1.2)) continue;
+    if (!obstacles.free(x, z, 1.1, 1.1, gy + 0.05, gy + 1.5)) continue;
+    if (!placeTextured(b, 'barril', x, gy, z, rng.range(0, 6), rng.range(0.95, 1.05), [0.6, 0.88])) break;
+    if (rng.chance(0.4)) placeTextured(b, 'barril', x + 0.68, gy, z + rng.range(-0.15, 0.15), rng.range(0, 6), 1, [0.6, 0.88]);
+    obstacles.reserve(x, z, 1, 1, gy, gy + 1);
+    drums++;
   }
 
   // Mato e capim: um tufo repetido por thin instances.

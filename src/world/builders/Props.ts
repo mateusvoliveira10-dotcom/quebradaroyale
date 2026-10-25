@@ -529,6 +529,8 @@ export function addCar(b: WorldBuilder, rng: Rng, x: number, z: number, ry: numb
   // Viatura: o modelo detalhado enviado, quando carregou.
   if (variant === 'policia' && addVehicle(b, 'viatura', x, z, ry)) return;
   const id = variant === 'comum' ? pickCarModel(r) : r.pick(['hatch', 'seda'] as const);
+  // A perua de cars.py deu lugar à Kombi enviada (modelo detalhado com textura).
+  if (id === 'perua' && addVehicle(b, 'kombi', x, z, ry)) return;
   const model = assets.cars.get(id)!;
   const paint = variant === 'taxi' ? m.carTaxi : variant === 'policia' ? m.carPaints[2] : r.pick(m.carPaints);
   // Perua de duas cores: teto/saia de cima branco; a viatura tem portas escuras.

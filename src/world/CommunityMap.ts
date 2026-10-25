@@ -4,15 +4,14 @@ import { Rng } from '../utils/random';
 import { buildHouse, HouseInfo, HouseSpec } from './builders/House';
 import { buildMorro } from './builders/Morro';
 import { buildMata } from './builders/Mata';
+import { buildIsland } from './builders/Island';
+import { OUTER_POIS, Terrain } from './Terrain';
 import {
-  addBackdropHills,
-  addOutskirts,
   addCar,
   addClouds,
   addDumpster,
   addFootballField,
   addVehicle,
-  addGraffitiTag,
   addPole,
   CarVariant,
   addSign,
@@ -32,7 +31,7 @@ export interface LootSpot {
   tier: LootTier;
 }
 
-export type FeatureKind = 'house' | 'shop' | 'terrace' | 'field' | 'road' | 'sidewalk' | 'beco' | 'mata';
+export type FeatureKind = 'house' | 'shop' | 'terrace' | 'field' | 'road' | 'sidewalk' | 'beco' | 'mata' | 'poi';
 
 export interface MapFeature {
   x0: number;
@@ -40,6 +39,8 @@ export interface MapFeature {
   x1: number;
   z1: number;
   kind: FeatureKind;
+  /** Nome da área (kind 'poi'). */
+  name?: string;
 }
 
 export interface CommunityMapResult {
@@ -99,43 +100,13 @@ export function buildCommunityMap(b: WorldBuilder): CommunityMapResult {
 
   // ----- Chão (terra batida) -----
   b.box({ w: half * 2 + 10, h: 1, d: half * 2 + 10, x: 0, z: 0, y: -1, mat: m.dirt, tile: 7, collide: true });
-  // Terreno de fora do muro (só visual, até o horizonte).
-  const outside = MeshBuilder.CreateGround('outsideGround', { width: 900, height: 900 }, b.scene);
-  outside.position.y = -0.05;
-  b.addMesh(outside, m.campoFora);
+  // Relevo da ilha em volta da comunidade (morros, lagoa, praia) e o mar.
+  const terrain = new Terrain();
+  terrain.build(b.scene, m.terreno);
 
   buildRoads(b, rng, features);
 
-  // ----- Muro em volta da comunidade (alto: não dá para escalar) -----
-  const wallH = 4.6;
-  const wallT = 0.4;
-  const len = half * 2 + wallT * 2;
-  for (const s of [-1, 1]) {
-    b.box({ w: len, h: wallH, d: wallT, x: 0, z: s * (half + wallT / 2), y: 0, mat: m.muro, collide: true, tile: 2.5, tileV: 3 });
-    b.box({ w: wallT, h: wallH, d: len, x: s * (half + wallT / 2), z: 0, y: 0, mat: m.muro, collide: true, tile: 2.5, tileV: 3 });
-    b.box({ w: len + 0.1, h: 0.12, d: wallT + 0.12, x: 0, z: s * (half + wallT / 2), y: wallH, mat: m.concrete });
-    b.box({ w: wallT + 0.12, h: 0.12, d: len + 0.1, x: s * (half + wallT / 2), z: 0, y: wallH, mat: m.concrete });
-  }
-  const graffiti: Array<[string, string, number, number, 1 | -1]> = [
-    ['QUEBRADA ROYALE', '#ffd21f', 0, half, -1],
-    ['FAVELA VIVE', '#2bd46b', 0, -half, 1],
-    ['PAZ NA QUEBRADA', '#25c4ff', -22, -half, 1],
-    ['RESPEITA', '#ff4fa3', 24, half, -1],
-    ['CRIA DA COMUNIDADE', '#ff7a1f', 40, -half, 1],
-  ];
-  for (const [text, color, x, z, facing] of graffiti) {
-    addSign(b, text, { x, y: 2.0, z, width: Math.min(16, text.length * 1.0), height: 2.8, facing, bg: '#ddd5c2', fg: color, graffiti: true });
-  }
-  // Pichações espalhadas pelo lado de dentro do muro (gerador próprio: o layout não muda).
-  const tagRng = new Rng(9182);
-  for (let i = 0; i < 36; i++) {
-    const p = tagRng.range(-half + 6, half - 6);
-    const y = tagRng.range(1.6, 3.4);
-    const wTag = tagRng.range(2.2, 4.2);
-    const s = tagRng.chance(0.5) ? 1 : -1;
-    if (tagRng.chance(0.5)) addGraffitiTag(b, tagRng, p, y, s * half, 'z', (-s) as 1 | -1, wTag);
-    else addGraffitiTag(b, tagRng, s * half, y, p, 'x', (-s) as 1 | -1, wTag);
-  }
+  // Sem muro em volta: a comunidade se abre para o resto da ilha (relevo, áreas com nome).
 
   // ----- Áreas reservadas -----
   const fieldRect: Rect = { x0: 26, x1: half, z0: -32, z1: -LOT_START };
@@ -269,9 +240,12 @@ export function buildCommunityMap(b: WorldBuilder): CommunityMapResult {
   buildPolesAndWires(b, rng, streetHouses);
   buildStreetLife(b, rng, lootSpots);
   addClouds(b, rng, 22);
-  addBackdropHills(b, rng, half + 40);
-  // Cidade em volta do muro (só cenário): nada de campo verde liso logo atrás da comunidade.
-  addOutskirts(b, half);
+  // O anel externo da ilha (áreas com nome, árvores, mar) substitui os morros de fundo e o
+  // bairro cenográfico de fora do muro.
+  const island = buildIsland(b, terrain);
+  houses.push(...island.houses);
+  for (const l of island.loot) loot(l.pos, l.tier);
+  for (const q of OUTER_POIS) features.push({ x0: q.x - q.r, x1: q.x + q.r, z0: q.z - q.r, z1: q.z + q.r, kind: 'poi', name: q.name });
 
   // Mata com trilhas no terreno vazio ao lado do campinho (gerador próprio).
   const mataRect = { x0: 60, x1: half - 2.5, z0: -31, z1: -9.5 };
@@ -284,12 +258,12 @@ export function buildCommunityMap(b: WorldBuilder): CommunityMapResult {
   scatterVegetation(b, {
     half,
     terraces: morro.terraces,
-    blocked: [...features.filter((f) => f.kind !== 'terrace' && f.kind !== 'mata'), ...mata.clear],
+    blocked: [...features.filter((f) => f.kind !== 'terrace' && f.kind !== 'mata' && f.kind !== 'poi'), ...mata.clear, ...island.blocked],
     loot: lootSpots.map((l) => l.pos),
     becos: features.filter((f) => f.kind === 'beco' && f.x1 - f.x0 > f.z1 - f.z0),
   });
 
-  return { spawn: new Vector3(0, 0.2, -1), houses, lootSpots, features, half };
+  return { spawn: new Vector3(0, 0.2, -1), houses, lootSpots, features, half: WORLD.radius };
 }
 
 function overlaps(a: Rect, b: Rect): boolean {

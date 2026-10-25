@@ -17,9 +17,9 @@ import {
   Vector3,
 } from '@babylonjs/core';
 
-const SKY_TOP = '#1f6fd0';
-const SKY_MID = '#4f9de6';
-const SKY_HORIZON = '#d6e8f2';
+const SKY_TOP = '#1d6fe0';
+const SKY_MID = '#4aa6f2';
+const SKY_HORIZON = '#bfe3fa';
 
 /**
  * Céu em degradê com sol, luz de fim de tarde com sombras que acompanham o
@@ -43,8 +43,8 @@ export class Environment {
     // Névoa de mormaço da cidade: mesma cor do horizonte, um pouco mais densa ao longe
     // (dá profundidade aos morros e recorta a estátua contra o céu).
     scene.fogMode = Scene.FOGMODE_EXP2;
-    scene.fogDensity = 0.0041;
-    scene.fogColor = Color3.FromHexString('#c9d9e3');
+    scene.fogDensity = 0.0019;
+    scene.fogColor = Color3.FromHexString('#bcdcf2');
 
     // Céu azulado por cima e luz rebatida quente da terra e do tijolo por baixo.
     const hemi = new HemisphericLight('hemi', new Vector3(0.15, 1, 0.1), scene);
@@ -97,15 +97,15 @@ export class Environment {
     const ip = p.imageProcessing;
     ip.toneMappingEnabled = true;
     ip.toneMappingType = ImageProcessingConfiguration.TONEMAPPING_ACES;
-    // Menos "desenho": exposição e contraste naturais, saturação quase neutra.
-    ip.exposure = 1.16;
-    ip.contrast = 1.12;
+    // Cartoon bem-feito (estilo Fortnite): claro, contrastado e saturado em todo o mapa.
+    ip.exposure = 1.22;
+    ip.contrast = 1.18;
     ip.vignetteEnabled = true;
     ip.vignetteWeight = 1.3;
     ip.vignetteColor = new Color4(0.1, 0.06, 0.08, 0);
     ip.colorCurvesEnabled = true;
     if (ip.colorCurves) {
-      ip.colorCurves.globalSaturation = 2;
+      ip.colorCurves.globalSaturation = 28;
       ip.colorCurves.shadowsHue = 230;
       ip.colorCurves.shadowsDensity = 12;
       ip.colorCurves.highlightsHue = 40;

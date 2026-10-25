@@ -118,6 +118,11 @@ export class StaticBatcher {
   build(shadows: ShadowGenerator | null): void {
     const byKey = new Map<string, Mesh>();
     for (const [key, { mat, list }] of this.groups) {
+      // O MergeMeshes extrai a primeira malha sem copiar e emenda as outras no array de
+      // índices dela: se ela divide a geometria com a malha-base do modelo (cópia de
+      // b.model), a base crescia a cada lote (índices repetidos centenas de vezes, triângulos
+      // esticados ligando árvores e muita memória). Geometria própria antes de juntar.
+      if (list[0].geometry && list[0].geometry.meshes.length > 1) list[0].makeGeometryUnique();
       const merged = Mesh.MergeMeshes(list, true, true);
       if (!merged) continue;
       merged.name = `static_${mat.name}`;

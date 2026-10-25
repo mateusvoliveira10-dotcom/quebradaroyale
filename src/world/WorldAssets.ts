@@ -31,8 +31,8 @@ export interface WorldModel {
 export type CarModelId = 'hatch' | 'seda' | 'perua' | 'picape' | 'besouro';
 export const CAR_MODELS: readonly CarModelId[] = ['hatch', 'seda', 'perua', 'picape', 'besouro'];
 
-export type DetailedVehicleId = 'fusca' | 'viatura' | 'ambulancia';
-export const DETAILED_VEHICLES: readonly DetailedVehicleId[] = ['fusca', 'viatura', 'ambulancia'];
+export type DetailedVehicleId = 'fusca' | 'viatura' | 'ambulancia' | 'kombi';
+export const DETAILED_VEHICLES: readonly DetailedVehicleId[] = ['fusca', 'viatura', 'ambulancia', 'kombi'];
 
 export interface DetailedVehicle {
   /** Versão de perto e de longe. */
@@ -64,6 +64,11 @@ export class WorldAssets {
    * centro do vão, no plano da face externa da parede, olhando para +Z.
    */
   readonly kit = new Map<string, WorldModel>();
+  /**
+   * Props enviados com textura própria (`tools/blender/textured_prop.py`): Prop_<id> e os
+   * materiais do GLB (ex.: saco_lixo).
+   */
+  readonly texturedProps = new Map<string, { model: WorldModel; materials: Map<string, Material> }>();
 
   static async load(scene: Scene): Promise<WorldAssets> {
     const base = `${import.meta.env.BASE_URL}assets/world/`;
@@ -85,6 +90,14 @@ export class WorldAssets {
         }
       }),
     );
+    for (const id of ['saco_lixo', 'pneus', 'barril']) {
+      try {
+        const p = await loadTexturedProp(scene, `${base}${id}.glb`, id);
+        if (p) assets.texturedProps.set(id, p);
+      } catch (e) {
+        console.warn(`[WorldAssets] ${id}.glb não carregou:`, e);
+      }
+    }
     try {
       const kit = await LoadAssetContainerAsync(`${base}kit.glb`, scene);
       for (const [name, model] of collect(scene, kit.meshes)) assets.kit.set(name, model);
@@ -104,7 +117,7 @@ export class WorldAssets {
     // (`lobby_props.py`: MesaBar, CadeiraBar, Engradado, Isopor, CaixaSom, Tronco_a/b). Opcionais: sem eles o jogo usa
     // as versões antigas feitas de primitivas.
     await Promise.all(
-      ['favela.glb', 'weapons.glb', 'lobby.glb'].map(async (file) => {
+      ['favela.glb', 'weapons.glb', 'lobby.glb', 'trees.glb'].map(async (file) => {
         try {
           const c = await LoadAssetContainerAsync(`${base}${file}`, scene);
           const models = collect(scene, c.meshes);
@@ -135,6 +148,25 @@ export class WorldAssets {
     WorldAssets.current = assets;
     return assets;
   }
+}
+
+/** Prop texturizado (`Prop_<id>`), com os materiais do próprio GLB. */
+async function loadTexturedProp(scene: Scene, url: string, id: string): Promise<{ model: WorldModel; materials: Map<string, Material> } | null> {
+  const c = await LoadAssetContainerAsync(url, scene);
+  const model = collect(scene, c.meshes).get(`Prop_${id}`);
+  if (!model) return null;
+  const materials = new Map<string, Material>();
+  for (const mat of c.materials) {
+    if (mat instanceof PBRMaterial) {
+      mat.reflectionTexture = studioMaterial(scene, 'estudio_ref', '#ffffff', 0, 1).reflectionTexture;
+      mat.environmentIntensity = 0.7;
+    }
+    scene.addMaterial(mat);
+    for (const t of mat.getActiveTextures()) scene.addTexture(t);
+    materials.set(mat.name, mat);
+  }
+  for (const m of c.meshes) m.dispose(false, false);
+  return { model, materials };
 }
 
 /** Carrega um veículo detalhado (`<id>.glb`: Car_<id>, Car_<id>_lod1, Col_<id>_*). */

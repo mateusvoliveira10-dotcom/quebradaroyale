@@ -1,3 +1,4 @@
+import { ALL_PLACES } from '../world/Places';
 import { Vector3 } from '@babylonjs/core';
 import { FeatureKind, MapFeature } from '../world/CommunityMap';
 
@@ -6,6 +7,7 @@ const COLORS: Record<FeatureKind, string> = {
   sidewalk: '#9c968a',
   beco: '#b3ad9f',
   field: '#c98a56',
+  poi: 'rgba(0,0,0,0)',
   mata: '#2f5a2a',
   terrace: '#8f8576',
   house: '#d98b5f',
@@ -171,6 +173,22 @@ export class Minimap {
       c.stroke();
       c.restore();
     }
+
+    // Nomes das áreas (no mapa inteiro, todos; perto, só os que cabem na janela).
+    c.save();
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.font = `900 ${Math.round((wide ? 6.2 : 7.5) * u)}px "Arial Black", Impact, sans-serif`;
+    for (const pl of ALL_PLACES) {
+      const [x, y] = this.toMap(pl.x, pl.z);
+      if (x < -20 || y < -20 || x > P + 20 || y > P + 20) continue;
+      c.lineWidth = 2.6 * u;
+      c.strokeStyle = 'rgba(20,14,24,0.85)';
+      c.strokeText(pl.name, x, y);
+      c.fillStyle = '#ffffff';
+      c.fillText(pl.name, x, y);
+    }
+    c.restore();
 
     for (const d of dots) {
       const [x, y] = this.toMap(d.pos.x, d.pos.z);

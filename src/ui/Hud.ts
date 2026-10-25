@@ -119,6 +119,31 @@ export class Hud {
     el('player-name').textContent = name.toUpperCase();
   }
 
+  private placeEl: HTMLDivElement | null = null;
+  private placeTimer = 0;
+
+  /** Nome grande da área ao entrar nela (como no Fortnite), some sozinho. */
+  showPlace(name: string): void {
+    if (!this.placeEl) {
+      const d = document.createElement('div');
+      d.style.cssText =
+        'position:fixed;left:50%;top:16%;transform:translateX(-50%);pointer-events:none;z-index:20;' +
+        'font:900 34px "Arial Black",Impact,sans-serif;letter-spacing:2px;color:#fff;' +
+        'text-shadow:0 3px 0 #1b1420,0 0 18px rgba(0,0,0,0.6);transition:opacity .5s;opacity:0;white-space:nowrap';
+      document.body.appendChild(d);
+      this.placeEl = d;
+    }
+    this.placeEl.textContent = name;
+    this.placeEl.style.opacity = '1';
+    this.placeTimer = 2.6;
+  }
+
+  /** Esconde o nome da área (fim de partida, lobby). */
+  hidePlace(): void {
+    this.placeTimer = 0;
+    if (this.placeEl) this.placeEl.style.opacity = '0';
+  }
+
   toast(text: string, color = '#ffd21f'): void {
     const t = document.createElement('div');
     t.className = 'toast';
@@ -321,6 +346,10 @@ export class Hud {
   }
 
   update(dt: number, weapons: WeaponSystem, armedView: boolean, dbg: HudDebug): void {
+    if (this.placeTimer > 0) {
+      this.placeTimer -= dt;
+      if (this.placeTimer <= 0 && this.placeEl) this.placeEl.style.opacity = '0';
+    }
     if (this.input.wasPressed('KeyH')) this.help.classList.toggle('hidden');
     if (this.input.wasPressed('F3')) this.debug.classList.toggle('hidden');
 

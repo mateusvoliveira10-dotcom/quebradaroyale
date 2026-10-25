@@ -119,6 +119,8 @@ export class LobbyScene {
         m.computeWorldMatrix(true);
         if (this.glowing.has(m)) this.glow.removeIncludedOnlyMesh(m);
       }
+      // Primeira malha com geometria própria (ver StaticBatcher.build: senão a base do modelo cresce).
+      if (list[0].geometry && list[0].geometry.meshes.length > 1) list[0].makeGeometryUnique();
       const merged = Mesh.MergeMeshes(list, true, true);
       if (!merged) continue;
       merged.name = `lobby_${mat.name}`;

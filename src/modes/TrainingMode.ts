@@ -98,7 +98,7 @@ export class TrainingMode implements GameMode {
     for (const d of this.displays) disposeWeaponModel(d);
     this.displays = [];
     this.g.playerWeapons.onFire = null;
-    this.g.player.ctrl.bounds = { cx: 0, cz: 0, half: WORLD.half + 2 };
+    this.g.player.ctrl.bounds = { cx: 0, cz: 0, half: WORLD.extent };
     this.g.player.ctrl.fence = MAP_FENCE;
     this.g.overlays.hideTraining();
   }
