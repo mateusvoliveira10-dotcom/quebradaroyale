@@ -19,6 +19,7 @@ import { Appearance, defaultAppearance } from '../appearance/Appearance';
 import { glassesById } from '../customization/glasses';
 import { HAIR_MESH, isDread } from '../customization/hair';
 import { instantiateModel } from '../world/ModelInstance';
+import { buildDreadStrands, DREAD_COLORS, dreadMaterial } from './Dreads';
 import { WorldAssets } from '../world/WorldAssets';
 import { BACKPACKS, HEADPHONES, WATCHES } from '../appearance/Appearance';
 import { CHAIN_CATALOG } from '../customization/chains';
@@ -38,15 +39,18 @@ interface Fit {
   rx?: number;
   ry?: number;
   rz?: number;
-  s: number;
+  s: number | [number, number, number];
 }
 // Encaixes medidos no personagem-base (espaços dos adaptadores, ver o construtor).
 // Relógio: a pulseira do modelo dá a volta no punho e o mostrador fica do lado de fora.
 const WATCH_FIT: Fit = { y: -0.205, z: 0.0525, ry: -Math.PI / 2, rz: Math.PI / 2, s: 2.1 };
-const SPORT_FIT: Fit = { y: 0.14, z: -0.24, s: 0.8 };
-const TACTICAL_FIT: Fit = { y: 0.12, z: -0.24, s: 0.8 };
-const HEADPHONE_FIT: Fit = { y: -0.035, s: 1.49 };
-const DREAD_FIT: Fit = { y: -0.153, ry: Math.PI, s: 1.12 };
+// Mochilas: o lado das alças (costas do modelo) virado para o corpo.
+const SPORT_FIT: Fit = { y: 0.12, z: -0.2, ry: Math.PI, s: 0.8 };
+const TACTICAL_FIT: Fit = { y: 0.1, z: -0.19, ry: Math.PI, s: 0.8 };
+// Headphone: concha centrada na orelha e larga o bastante para a orelha ficar dentro dela.
+const HEADPHONE_FIT: Fit = { y: 0, z: -0.046, s: [1.95, 1.6, 1.6] };
+// Com dreads: maior, por cima das mechas.
+const HEADPHONE_DREAD_FIT: Fit = { y: 0.02, z: -0.05, s: [2.3, 1.75, 1.75] };
 
 const OUTLINE = Color3.FromHexString('#1a1218');
 
@@ -505,7 +509,7 @@ export class CharacterModel {
       this.applyGarment('feet', s?.mesh ?? null, s?.id ?? null);
     }
     if (first || prev.glasses !== app.glasses) this.rebuild('glasses', () => this.buildGlasses());
-    if (accChanged || prev.jersey !== app.jersey) this.rebuild('acc', () => this.buildAccessories());
+    if (accChanged || prev.jersey !== app.jersey || prev.hair !== app.hair) this.rebuild('acc', () => this.buildAccessories());
     // O boné esconde o topete (o degradê pintado continua por baixo).
     if (first || prev.hair !== app.hair || accChanged) this.rebuild('hair', () => this.buildHair());
   }
@@ -562,8 +566,17 @@ export class CharacterModel {
     const capOn = this.appearance.accessories.some((a) => a.startsWith('bone_'));
     const asset = GarmentAsset.current;
     if (isDread(id)) {
-      // Dreads (modelo enviado, em 3 cores): presos na cabeça; com boné ficam por baixo dele.
-      this.glbAccessory(id, this.headMount, DREAD_FIT, false);
+      // Dreads feitos no jogo (Dreads.ts): calota no couro cabeludo e mechas nascendo dela.
+      const hex = DREAD_COLORS[id] ?? '#1d1510';
+      if (!asset) return;
+      const cap = asset.create(this.inst, 'Cabelo_Cacheado');
+      cap.material = dreadMaterial(this.scene, hex);
+      this.groups.hair.push(cap);
+      const strands = buildDreadStrands(this.scene, cap, this.headMount, hex);
+      if (strands) {
+        strands.receiveShadows = true;
+        this.groups.hair.push(strands);
+      }
       return;
     }
     if (capOn || !asset) return;
@@ -635,7 +648,7 @@ export class CharacterModel {
       if (!tatica) this.backpackStraps();
     }
     const phones = HEADPHONES.find((f) => has(f));
-    if (phones) this.glbAccessory(phones, this.headMount, HEADPHONE_FIT, true);
+    if (phones) this.glbAccessory(phones, this.headMount, isDread(this.appearance.hair) ? HEADPHONE_DREAD_FIT : HEADPHONE_FIT, true);
     void s2;
   }
 
@@ -647,7 +660,8 @@ export class CharacterModel {
     root.parent = parent;
     root.position.set(fit.x ?? 0, fit.y ?? 0, fit.z ?? 0);
     root.rotation.set(fit.rx ?? 0, fit.ry ?? 0, fit.rz ?? 0);
-    root.scaling.setAll(fit.s);
+    if (Array.isArray(fit.s)) root.scaling.set(...fit.s);
+    else root.scaling.setAll(fit.s);
     if (this.building) this.groups[this.building].push(root);
     for (const m of instantiateModel(p.model, (role) => p.materials.get(role) ?? null, root, id)) {
       m.isPickable = false;
@@ -663,21 +677,21 @@ export class CharacterModel {
     for (const side of [-1, 1]) {
       const x = side * 0.1;
       const path = [
-        new Vector3(x, 0.34, -0.17),
-        new Vector3(x * 1.05, 0.47, -0.11),
-        new Vector3(x * 1.1, 0.53, -0.02),
-        new Vector3(x * 1.15, 0.5, 0.08),
-        new Vector3(x * 1.2, 0.4, 0.14),
-        new Vector3(x * 1.35, 0.22, 0.13),
-        new Vector3(x * 1.6, 0.1, 0.06),
-        new Vector3(x * 1.55, 0.06, -0.1),
-        new Vector3(x * 1.2, 0.08, -0.17),
+        new Vector3(x, 0.34, -0.19),
+        new Vector3(x * 1.05, 0.5, -0.13),
+        new Vector3(x * 1.1, 0.57, -0.02),
+        new Vector3(x * 1.15, 0.53, 0.11),
+        new Vector3(x * 1.2, 0.42, 0.185),
+        new Vector3(x * 1.35, 0.24, 0.185),
+        new Vector3(x * 1.6, 0.1, 0.12),
+        new Vector3(x * 1.6, 0.06, -0.08),
+        new Vector3(x * 1.2, 0.08, -0.19),
       ];
       const tube = MeshBuilder.CreateTube('alca', { path, radius: 0.016, tessellation: 6, cap: Mesh.CAP_ALL }, this.scene);
       tube.scaling.set(1, 1, 1);
       this.add(tube, mat, this.spineMount, {}, false, true);
       // Fivela de regulagem na frente.
-      this.add(MeshBuilder.CreateBox('fivela', { width: 0.045, height: 0.03, depth: 0.012 }, this.scene), this.mat('fivela', '#3a3d44', { spec: 0.9, power: 60 }), this.spineMount, { x: x * 1.3, y: 0.3, z: 0.145 }, false, true);
+      this.add(MeshBuilder.CreateBox('fivela', { width: 0.045, height: 0.03, depth: 0.012 }, this.scene), this.mat('fivela', '#3a3d44', { spec: 0.9, power: 60 }), this.spineMount, { x: x * 1.3, y: 0.32, z: 0.195 }, false, true);
     }
   }
 
