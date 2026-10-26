@@ -1,4 +1,4 @@
-import { Camera, Engine, FreeCamera, Scene, Tools, Vector3 } from '@babylonjs/core';
+import { Camera, DumpTools, Engine, FreeCamera, RenderTargetTexture, Scene, Texture, Vector3 } from '@babylonjs/core';
 
 /**
  * "Fotos" tiradas pelo próprio jogo, uma vez na abertura: a arte dos cards de modo
@@ -20,7 +20,7 @@ export async function renderShot(engine: Engine, scene: Scene, s: ShotSpec): Pro
   cam.minZ = 0.3;
   cam.maxZ = 1500;
   try {
-    return await Tools.CreateScreenshotUsingRenderTargetAsync(engine, cam, { width: s.width, height: s.height }, 'image/jpeg', 4, true);
+    return await shootToDataUrl(engine, scene, cam, s.width, s.height, 4);
   } finally {
     cam.dispose();
   }
@@ -47,9 +47,59 @@ export async function renderMapTopDown(engine: Engine, scene: Scene, half: numbe
   // Só fotografa com tudo pronto (relevo e mar ainda compilando saíam de fora: fundo marrom).
   await scene.whenReadyAsync();
   try {
-    return await Tools.CreateScreenshotUsingRenderTargetAsync(engine, cam, { width: size, height: size }, 'image/jpeg', 1, true);
+    return await shootToDataUrl(engine, scene, cam, size, size, 1);
   } finally {
     scene.fogEnabled = fog;
     cam.dispose();
+  }
+}
+
+/**
+ * Foto fora da tela com a câmera dada. Faz o mesmo que o CreateScreenshotUsingRenderTarget
+ * do Babylon, com uma diferença importante: o Babylon troca a largura/altura da tela pelas
+ * da foto ENQUANTO espera a cena ficar pronta, e se a partida começava nesse meio-tempo o
+ * jogo era desenhado em metade da tela (e a mira usava o tamanho errado). Aqui a troca só
+ * vale durante o desenho da foto, que é síncrono.
+ */
+async function shootToDataUrl(engine: Engine, scene: Scene, cam: Camera, width: number, height: number, samples: number): Promise<string> {
+  const tex = new RenderTargetTexture('foto', { width, height }, scene, false, false, 0, false, Texture.BILINEAR_SAMPLINGMODE, undefined, false, undefined, undefined, undefined, samples);
+  tex.renderList = scene.meshes.slice();
+  tex.activeCamera = cam;
+  tex.renderSprites = true;
+  try {
+    // Espera tudo pronto sem mexer em nada do motor.
+    while (!(tex.isReadyForRendering() && cam.isReady(true))) await new Promise((r) => setTimeout(r, 50));
+    const getW = engine.getRenderWidth;
+    const getH = engine.getRenderHeight;
+    const prevCam = scene.activeCamera;
+    const prevCams = scene.activeCameras;
+    const prevOut = cam.outputRenderTarget;
+    const prevMeshes = scene.meshes;
+    engine.getRenderWidth = (useScreen = false) => (!useScreen && engine._currentRenderTarget ? engine._currentRenderTarget.width : width);
+    engine.getRenderHeight = (useScreen = false) => (!useScreen && engine._currentRenderTarget ? engine._currentRenderTarget.height : height);
+    engine.onResizeObservable.notifyObservers(engine);
+    try {
+      scene.incrementRenderId();
+      scene.resetCachedMaterial();
+      scene.activeCamera = cam;
+      scene.activeCameras = null;
+      cam.outputRenderTarget = tex;
+      scene.meshes = tex.renderList!;
+      scene.render();
+    } finally {
+      scene.activeCamera = prevCam;
+      scene.activeCameras = prevCams;
+      cam.outputRenderTarget = prevOut;
+      scene.meshes = prevMeshes;
+      engine.getRenderWidth = getW;
+      engine.getRenderHeight = getH;
+      engine.onResizeObservable.notifyObservers(engine);
+      prevCam?.getProjectionMatrix(true);
+    }
+    const data = await tex.readPixels(undefined, undefined, undefined, false);
+    if (!data) throw new Error('foto sem dados');
+    return await DumpTools.DumpDataAsync(width, height, data, 'image/jpeg', undefined, true, false, 0.9);
+  } finally {
+    tex.dispose();
   }
 }

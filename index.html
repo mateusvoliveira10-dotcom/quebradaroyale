@@ -166,9 +166,43 @@
     <!-- ============================== SOBREPOSIÇÕES ============================== -->
     <div id="loading" class="overlay">
       <img class="logo" src="/logo.webp" alt="Quebrada Royale" draggable="false" />
-      <p id="loading-text">Carregando a comunidade…</p>
+      <p id="loading-text">Carregando comunidade…</p>
+      <div id="loading-bar"><div id="loading-fill"></div></div>
+      <p id="loading-pct">0%</p>
       <p id="loading-sound" class="hidden">🔊 Clique ou aperte uma tecla para ligar o som</p>
     </div>
+    <script>
+      // Barra de carregamento: o jogo informa as etapas (window.__qrProgress) e, entre uma
+      // etapa e outra, a barra anda devagar sozinha até perto da próxima (nunca volta).
+      (function () {
+        var fill = document.getElementById('loading-fill');
+        var pct = document.getElementById('loading-pct');
+        var text = document.getElementById('loading-text');
+        var shown = 0;
+        var target = 0.04;
+        var ceiling = 0.3;
+        window.__qrProgress = function (p, label, next) {
+          target = Math.max(target, p);
+          ceiling = Math.max(target, next || p);
+          if (label && text) text.textContent = label;
+          if (p >= 1) {
+            shown = 1;
+            if (fill) fill.style.width = '100%';
+            if (pct) pct.textContent = '100%';
+          }
+        };
+        function tick() {
+          // Vai até o alvo e depois "rasteja" em direção ao teto da etapa atual.
+          if (shown < target) shown += Math.max(0.002, (target - shown) * 0.12);
+          else if (shown < ceiling - 0.005) shown += (ceiling - shown) * 0.006;
+          if (shown > 1) shown = 1;
+          if (fill) fill.style.width = (shown * 100).toFixed(1) + '%';
+          if (pct) pct.textContent = Math.floor(shown * 100) + '%';
+          if (shown < 0.999) requestAnimationFrame(tick);
+        }
+        requestAnimationFrame(tick);
+      })();
+    </script>
     <script>
       // Música tema já na logo, antes do jogo (6 MB) terminar de baixar. O Music.ts assume
       // este mesmo áudio depois. Navegadores bloqueiam som antes de qualquer interação na

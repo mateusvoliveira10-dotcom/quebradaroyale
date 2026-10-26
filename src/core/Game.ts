@@ -104,6 +104,7 @@ export class Game {
    * jogo. Termina com shaders do personagem já compilados.
    */
   static async create(canvas: HTMLCanvasElement): Promise<Game> {
+    progress(0.3, 'Carregando comunidade…', 0.7);
     const engine = new Engine(canvas, true, { stencil: true, preserveDrawingBuffer: false }, false);
     const scene = new Scene(engine);
     // Ordem dos opacos: corpo dos personagens depois das roupas e o cabelo depois do corpo.
@@ -119,12 +120,22 @@ export class Game {
     const worldAssets = WorldAssets.load(scene).catch((err) => console.warn('[Mapa] Modelos 3D do mapa não carregaram; usando carros de caixas.', err));
     // Avião e paraquedas (GLB do Blender); sem eles valem os de formas simples.
     const airAssets = loadAirAssets(scene).catch((err) => console.warn('[Avião] modelos não carregaram:', err));
-    const character = await CharacterAsset.load(scene);
-    await worldAssets;
-    await airAssets;
-    await GarmentAsset.load(scene, character.baseMaterial, character.skeletonBones);
+    // Cada pacote de modelos que termina empurra a barra (30% → 70%).
+    let done = 0;
+    const step = <T>(p: Promise<T>) => p.then((v) => (progress(0.3 + (++done / 4) * 0.4, undefined, 0.3 + ((done + 1) / 4) * 0.4), v));
+    const characterP = step(CharacterAsset.load(scene));
+    await step(worldAssets);
+    await step(airAssets);
+    const character = await characterP;
+    await step(GarmentAsset.load(scene, character.baseMaterial, character.skeletonBones));
+    progress(0.72, 'Montando o mapa…', 0.86);
+    // Deixa a barra ser desenhada antes da montagem (síncrona e pesada) do mundo.
+    await new Promise((r) => setTimeout(r, 40));
     const game = new Game(canvas, engine, scene);
+    progress(0.88, 'Preparando personagem e gráficos…', 0.98);
+    await new Promise((r) => setTimeout(r, 20));
     await game.warmup();
+    progress(1, 'Pronto!');
     // Em segundo plano: a foto do Babylon espera um quadro ser desenhado, e com a aba em
     // segundo plano isso só acontece quando ela volta — não pode prender o carregamento.
     // Até as fotos ficarem prontas valem a ilustração vetorial e o esboço do minimapa.
@@ -689,4 +700,9 @@ export class Game {
     if (this.paused || this.mode === this.lobby) this.audio.setLoop('chest', 0);
     this.input.endFrame();
   }
+}
+
+/** Barra de carregamento da tela da logo (index.html). */
+function progress(p: number, label?: string, next?: number): void {
+  (window as unknown as { __qrProgress?: (p: number, label?: string, next?: number) => void }).__qrProgress?.(p, label, next);
 }

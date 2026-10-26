@@ -796,7 +796,29 @@ body.dm #topbar { display: none; }
 }
 .overlay.soft { background: rgba(27, 20, 32, 0.35); cursor: pointer; }
 #loading { background: radial-gradient(circle at 50% 40%, #2a5a3a, #101418 70%); z-index: 40; }
-#loading-text { font-weight: 700; opacity: 0.85; }
+#loading-text { font-weight: 700; opacity: 0.9; letter-spacing: 0.5px; margin: 0; }
+#loading-bar {
+  width: min(460px, 80vw);
+  height: 16px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 2px solid rgba(255, 210, 31, 0.75);
+  overflow: hidden;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+#loading-fill {
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #1fa64a, #ffd21f 60%, #ffe46b);
+  background-size: 200% 100%;
+  animation: loading-shine 1.6s linear infinite;
+}
+@keyframes loading-shine {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+#loading-pct { margin: 0; font-weight: 900; color: #ffd21f; font-size: 15px; }
 .card {
   min-width: 320px;
   max-width: 92vw;
