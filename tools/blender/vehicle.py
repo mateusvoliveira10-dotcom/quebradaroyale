@@ -74,6 +74,10 @@ VEHICLES = {
     # Kombi (modelo enviado): ~4,2 m de comprimento e teto em ~2,05 m. Substitui a "perua"
     # de cars.py nas ruas.
     'kombi': dict(scale=4.2, tex=2048),
+    # Gol quadrado (modelo enviado): ~3,9 m de comprimento.
+    'gol': dict(scale=3.9, tex=2048),
+    # Ônibus urbano (modelo enviado): ~8 m de comprimento e teto em ~3,2 m.
+    'onibus': dict(scale=8.0, tex=2048),
 }
 CFG = VEHICLES[VID]
 SCALE = CFG['scale']

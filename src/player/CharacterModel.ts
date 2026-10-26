@@ -17,7 +17,10 @@ import {
 } from '@babylonjs/core';
 import { Appearance, defaultAppearance } from '../appearance/Appearance';
 import { glassesById } from '../customization/glasses';
-import { HAIR_MESH } from '../customization/hair';
+import { HAIR_MESH, isDread } from '../customization/hair';
+import { instantiateModel } from '../world/ModelInstance';
+import { WorldAssets } from '../world/WorldAssets';
+import { BACKPACKS, HEADPHONES, WATCHES } from '../appearance/Appearance';
 import { CHAIN_CATALOG } from '../customization/chains';
 import { bottomById, GarmentSlot, shoeById } from '../customization/garments';
 import { JERSEY_SHARED, jerseyById } from '../customization/jerseys';
@@ -26,6 +29,24 @@ import { CharacterAsset, CharacterInstance, Clip, CLIP_FPS, ClipName } from './C
 import { clothingKey, clothingMaterial } from './ClothingMaterial';
 import { GarmentAsset, UNDER_SHIRT } from './GarmentAsset';
 import { glassesMaterials, studioMaterial } from './GlassesMaterial';
+
+/** Ajuste de um acessório de modelo enviado no encaixe (posição, rotação e escala uniforme). */
+interface Fit {
+  x?: number;
+  y?: number;
+  z?: number;
+  rx?: number;
+  ry?: number;
+  rz?: number;
+  s: number;
+}
+// Encaixes medidos no personagem-base (espaços dos adaptadores, ver o construtor).
+// Relógio: a pulseira do modelo dá a volta no punho e o mostrador fica do lado de fora.
+const WATCH_FIT: Fit = { y: -0.205, z: 0.0525, ry: -Math.PI / 2, rz: Math.PI / 2, s: 2.1 };
+const SPORT_FIT: Fit = { y: 0.14, z: -0.24, s: 0.8 };
+const TACTICAL_FIT: Fit = { y: 0.12, z: -0.24, s: 0.8 };
+const HEADPHONE_FIT: Fit = { y: -0.035, s: 1.49 };
+const DREAD_FIT: Fit = { y: -0.153, ry: Math.PI, s: 1.12 };
 
 const OUTLINE = Color3.FromHexString('#1a1218');
 
@@ -540,6 +561,11 @@ export class CharacterModel {
     const id = this.appearance.hair;
     const capOn = this.appearance.accessories.some((a) => a.startsWith('bone_'));
     const asset = GarmentAsset.current;
+    if (isDread(id)) {
+      // Dreads (modelo enviado, em 3 cores): presos na cabeça; com boné ficam por baixo dele.
+      this.glbAccessory(id, this.headMount, DREAD_FIT, false);
+      return;
+    }
     if (capOn || !asset) return;
     const m = asset.create(this.inst, HAIR_MESH[id]);
     m.material = asset.material(`cabelo_${id}`);
@@ -596,32 +622,103 @@ export class CharacterModel {
       }
     }
     if (has('bone_tras') || has('bone_frente') || has('bone_aba_reta')) this.buildCap(has('bone_frente') ? 'curva' : 'reta', has('bone_tras'), jersey);
-    if (has('pulseiras')) {
-      const cols = ['#ffc23a', '#16100c', '#1fa64a'];
-      cols.forEach((c, i) => {
-        this.add(MeshBuilder.CreateTorus('bracelet', { diameter: 0.088, thickness: 0.012, tessellation: 16 }, s2), this.mat(`bracelet_${c}`, c, { spec: 0.8, power: 60 }), this.wristR, { y: -0.215 + i * 0.016 }, false, true);
-      });
-    }
-    if (has('relogio')) {
-      const band = this.mat('watch_band', '#202020', { spec: 0.8, power: 60 });
-      const face = this.mat('watch_face', '#ffc23a', { spec: 1.2, power: 80 });
-      this.add(MeshBuilder.CreateCylinder('watch', { diameter: 0.088, height: 0.035, tessellation: 16 }, s2), band, this.wristL, { y: -0.225 }, false);
-      this.add(MeshBuilder.CreateCylinder('watchFace', { diameter: 0.04, height: 0.012, tessellation: 12 }, s2), face, this.wristL, { y: -0.225, z: -0.042, rx: Math.PI / 2 }, false, true);
-    }
-    const backpack = has('mochila');
-    this.backMount.position.z = backpack ? -0.32 : -0.16;
+    if (has('pulseiras')) this.beadBracelets();
+    if (has('pulseira_ouro')) this.goldBracelet();
+    const watch = WATCHES.find((w) => has(w));
+    if (watch) this.glbAccessory(watch, this.wristL, WATCH_FIT, true);
+    const backpack = BACKPACKS.find((b) => has(b));
+    this.backMount.position.z = backpack ? -0.36 : -0.16;
     if (backpack) {
-      const bag = this.mat('backpack', '#2d3340', { spec: 0.25, rim: '#9fb4ff', rimStrength: 0.2 });
-      const bagAccent = this.mat(`backpackAccent_${jersey.trim}`, jersey.trim, { spec: 0.2 });
-      const sp = this.spineMount;
-      this.add(MeshBuilder.CreateBox('bagBody', { width: 0.3, height: 0.38, depth: 0.14 }, s2), bag, sp, { y: 0.28, z: -0.2 });
-      this.add(MeshBuilder.CreateBox('bagPocket', { width: 0.22, height: 0.15, depth: 0.05 }, s2), bag, sp, { y: 0.2, z: -0.29 }, false);
-      this.add(MeshBuilder.CreateBox('bagZip', { width: 0.24, height: 0.02, depth: 0.06 }, s2), bagAccent, sp, { y: 0.28, z: -0.29 }, false, true);
-      for (const side of [-1, 1]) {
-        this.add(MeshBuilder.CreateBox('strap', { width: 0.04, height: 0.34, depth: 0.018 }, s2), bag, sp, { x: side * 0.09, y: 0.3, z: 0.142, rx: -0.12 }, false, true);
-        this.add(MeshBuilder.CreateBox('strapTop', { width: 0.04, height: 0.018, depth: 0.27 }, s2), bag, sp, { x: side * 0.09, y: 0.48, z: 0.0 }, false, true);
-      }
+      const tatica = backpack === 'mochila_tatica';
+      this.glbAccessory(backpack, this.spineMount, tatica ? TACTICAL_FIT : SPORT_FIT, false);
+      // A esportiva veio sem alças: duas alças de nylon por cima dos ombros até a base.
+      if (!tatica) this.backpackStraps();
     }
+    const phones = HEADPHONES.find((f) => has(f));
+    if (phones) this.glbAccessory(phones, this.headMount, HEADPHONE_FIT, true);
+    void s2;
+  }
+
+  /** Acessório de modelo enviado (texturedProps) preso a um encaixe, com o ajuste dado. */
+  private glbAccessory(id: string, parent: TransformNode, fit: Fit, detail: boolean): void {
+    const p = WorldAssets.current?.texturedProps.get(id);
+    if (!p) return;
+    const root = new Mesh(`${id}_acc`, this.scene);
+    root.parent = parent;
+    root.position.set(fit.x ?? 0, fit.y ?? 0, fit.z ?? 0);
+    root.rotation.set(fit.rx ?? 0, fit.ry ?? 0, fit.rz ?? 0);
+    root.scaling.setAll(fit.s);
+    if (this.building) this.groups[this.building].push(root);
+    for (const m of instantiateModel(p.model, (role) => p.materials.get(role) ?? null, root, id)) {
+      m.isPickable = false;
+      m.receiveShadows = true;
+      if (detail) this.details.add(m);
+      if (this.building) this.groups[this.building].push(m);
+    }
+  }
+
+  /** Alças da mochila esportiva: tiras de nylon do alto das costas, por cima do ombro, até a cintura. */
+  private backpackStraps(): void {
+    const mat = this.mat('alca_mochila', '#1d1e22', { spec: 0.15 });
+    for (const side of [-1, 1]) {
+      const x = side * 0.1;
+      const path = [
+        new Vector3(x, 0.34, -0.17),
+        new Vector3(x * 1.05, 0.47, -0.11),
+        new Vector3(x * 1.1, 0.53, -0.02),
+        new Vector3(x * 1.15, 0.5, 0.08),
+        new Vector3(x * 1.2, 0.4, 0.14),
+        new Vector3(x * 1.35, 0.22, 0.13),
+        new Vector3(x * 1.6, 0.1, 0.06),
+        new Vector3(x * 1.55, 0.06, -0.1),
+        new Vector3(x * 1.2, 0.08, -0.17),
+      ];
+      const tube = MeshBuilder.CreateTube('alca', { path, radius: 0.016, tessellation: 6, cap: Mesh.CAP_ALL }, this.scene);
+      tube.scaling.set(1, 1, 1);
+      this.add(tube, mat, this.spineMount, {}, false, true);
+      // Fivela de regulagem na frente.
+      this.add(MeshBuilder.CreateBox('fivela', { width: 0.045, height: 0.03, depth: 0.012 }, this.scene), this.mat('fivela', '#3a3d44', { spec: 0.9, power: 60 }), this.spineMount, { x: x * 1.3, y: 0.3, z: 0.145 }, false, true);
+    }
+  }
+
+  /** Pulseira de ouro: corrente de elos (grumet) em volta do punho direito, com reflexo do estúdio. */
+  private goldBracelet(): void {
+    const links: Mesh[] = [];
+    const n = 30;
+    const r = 0.05;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      const l = MeshBuilder.CreateTorus('elo', { diameter: 0.016, thickness: 0.0055, tessellation: 8 }, this.scene);
+      l.position.set(Math.cos(a) * r, 0, Math.sin(a) * r);
+      l.rotation.set(i % 2 ? Math.PI / 2 : 0, -a, 0.5);
+      links.push(l);
+    }
+    const chain = Mesh.MergeMeshes(links, true, true);
+    if (!chain) return;
+    chain.material = studioMaterial(this.scene, 'pulseira_ouro', '#ffb52e', 1, 0.18, 1.25);
+    chain.parent = this.wristR;
+    chain.position.set(0, -0.2, 0);
+    chain.isPickable = false;
+    this.details.add(chain);
+    if (this.building) this.groups[this.building].push(chain);
+  }
+
+  /** Três pulseiras de miçanga (contas redondas) coladas ao punho direito. */
+  private beadBracelets(): void {
+    const cols = ['#ffc23a', '#16100c', '#1fa64a'];
+    cols.forEach((c, k) => {
+      const beads: Mesh[] = [];
+      const n = 24;
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2;
+        const s = MeshBuilder.CreateSphere('conta', { diameter: 0.013, segments: 4 }, this.scene);
+        s.position.set(Math.cos(a) * 0.048, 0, Math.sin(a) * 0.048);
+        beads.push(s);
+      }
+      const ring = Mesh.MergeMeshes(beads, true, true);
+      if (!ring) return;
+      this.add(ring, this.mat(`conta_${c}`, c, { spec: 0.9, power: 70 }), this.wristR, { y: -0.168 + k * 0.012 }, false, true);
+    });
   }
 
   // ------------------------------------------------------------------ helpers
@@ -878,8 +975,10 @@ export class CharacterModel {
     } else if (a.crouching) {
       t.crouch = 1;
       if (moving) {
-        // Agachado andando: pose agachada com as pernas do andar.
-        const m = clamp(s / 2, 0, 1) * 0.45;
+        // Agachado andando (como no Fortnite): o corpo continua baixo o tempo todo, só as
+        // pernas dão passos curtos. Antes o peso do andar subia com a velocidade e o
+        // personagem quase ficava em pé ao andar agachado.
+        const m = clamp(s / 1.5, 0, 1) * 0.3;
         t.crouch = 1 - m;
         t.walk = m;
       }

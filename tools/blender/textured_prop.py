@@ -27,6 +27,28 @@ PROPS = {
     'barril': dict(height=0.88, target=4000, tex=1024, rust=True),
     # Baú antigo (base e tampa separadas depois por chest.py): ~0,62 m de altura.
     'bau': dict(height=0.62, target=8000, tex=1024),
+    # Kit médico (caixa de medicamentos): ~0,34 m de altura, cura vida.
+    'kit_medico': dict(height=0.34, target=6000, tex=1024),
+    # Estátua do tubarão com mergulhador na gaiola (Vila dos Pescadores): 6,5 m.
+    'tubarao': dict(height=6.5, target=30000, tex=2048),
+    # Cone de trânsito: 0,7 m (já é leve).
+    'cone': dict(height=0.7, target=2000, tex=512),
+    # Energético (lata) do loot: 0,3 m (maior que a real, para ler de longe como no Fortnite).
+    'energetico': dict(height=0.3, target=3000, tex=512),
+    # Barco de pesca com cabine: ~4,2 m de altura (casco ~6 m).
+    'barco': dict(height=4.2, target=12000, tex=2048),
+    # Árvores enviadas: ~9 m e ~8 m.
+    'arvore1': dict(height=9.0, target=9000, tex=1024),
+    'arvore2': dict(height=8.0, target=9000, tex=1024),
+    # Cristo (estátua do morro): 14 m sem o pedestal.
+    'cristo': dict(height=14.0, target=40000, tex=1024),
+    # Itens do personagem (medidos em metros; o jogo encaixa nos ossos).
+    'mochila_esportiva': dict(height=0.48, target=6000, tex=1024),
+    'mochila_tatica': dict(height=0.52, target=7000, tex=1024),
+    'relogio': dict(height=0.05, target=4000, tex=1024),
+    'fone': dict(height=0.2, target=5000, tex=1024),
+    # Dread (várias partes): só a forma; a cor (preto, castanho, loiro) vem do jogo.
+    'dread': dict(height=0.36, target=16000, tex=512, join=True),
 }
 
 def rustify(img):
@@ -141,9 +163,21 @@ cfg = PROPS[pid]
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.import_scene.gltf(filepath=src)
+meshes = [o for o in bpy.data.objects if o.type == 'MESH']
+if cfg.get('join') and len(meshes) > 1:
+    for o in bpy.data.objects:
+        o.select_set(o in meshes)
+    bpy.context.view_layer.objects.active = meshes[0]
+    bpy.ops.object.join()
 obj = next(o for o in bpy.data.objects if o.type == 'MESH')
 common.select_only(obj)
 bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+# Modelos do Tripo vêm como triângulos soltos (sem vértices compartilhados): sem soldar, a
+# decimação despedaça a malha (árvores e a estátua saíam em cacos).
+bpy.ops.object.mode_set(mode='EDIT')
+bpy.ops.mesh.select_all(action='SELECT')
+bpy.ops.mesh.remove_doubles(threshold=0.0004)
+bpy.ops.object.mode_set(mode='OBJECT')
 faces = len(obj.data.polygons)
 mod = obj.modifiers.new('reduz', 'DECIMATE')
 mod.ratio = min(1.0, cfg['target'] / faces)
@@ -198,9 +232,11 @@ if preview:
     scene.world = world
     bpy.ops.object.light_add(type='SUN', rotation=(math.radians(50), 0, math.radians(30)))
     bpy.context.active_object.data.energy = 4
-    bpy.ops.object.camera_add(location=(1.4, -1.6, 0.9))
+    hz = cfg['height']
+    bpy.ops.object.camera_add(location=(1.4 * hz / 0.72, -1.6 * hz / 0.72, 0.9 * hz / 0.72))
     cam = bpy.context.active_object
-    d = Vector((0, 0, 0.35)) - cam.location
+    cam.data.clip_end = hz * 40
+    d = Vector((0, 0, 0.35 * hz / 0.72)) - cam.location
     cam.rotation_euler = d.to_track_quat('-Z', 'Y').to_euler()
     scene.camera = cam
     scene.render.image_settings.file_format = 'PNG'

@@ -1,6 +1,6 @@
 import { HAIR_OPTIONS, type BottomId, type ShoesId } from '../appearance/Appearance';
 import { CHAIN_CATALOG, CHAINS_URL } from './chains';
-import { HAIR_MESH, HAIR_URL, hairFiles } from './hair';
+import { HAIR_MESH, HAIR_URL, hairFiles, isDread } from './hair';
 import { JERSEY_CATALOG, JERSEY_SHARED, jerseyFiles } from './jerseys';
 
 /**
@@ -75,7 +75,7 @@ export const GARMENT_SOURCES = {
     { url: HAIR_URL, names: [...new Set(Object.values(HAIR_MESH))] },
   ],
   materials: [
-    ...HAIR_OPTIONS.map((h) => ({ id: `cabelo_${h.id}`, ...pick(hairFiles(h.id)), roughness: 0.68 })),
+    ...HAIR_OPTIONS.filter((h) => !isDread(h.id)).map((h) => ({ id: `cabelo_${h.id}`, ...pick(hairFiles(h.id)), roughness: 0.68 })),
     ...JERSEY_CATALOG.map((j) => ({ id: j.id, albedo: jerseyFiles(j.id).albedo, normal: JERSEY_SHARED.fabricNormal, roughness: 0.82 })),
     ...BOTTOM_CATALOG.map((b) => ({ id: b.id, ...pick(garmentFiles('bottom', b.id)), roughness: 0.9 })),
     ...SHOE_CATALOG.map((s) => ({ id: s.id, ...pick(garmentFiles('feet', s.id)), roughness: 0.7 })),

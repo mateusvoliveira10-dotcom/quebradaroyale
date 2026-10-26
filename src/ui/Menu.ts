@@ -276,8 +276,21 @@ export class Menu {
           bone_frente: ['#2457c5', '#16100c'],
           bone_aba_reta: ['#16100c', '#ffd21f'],
           pulseiras: ['#ffc23a', '#16100c', '#1fa64a'],
-          relogio: ['#202020', '#ffc23a'],
-          mochila: ['#2d3340'],
+          pulseira_ouro: ['#ffb52e'],
+          relogio: ['#c8ccd2', '#1fa66a'],
+          relogio_azul: ['#c8ccd2', '#2457c5'],
+          relogio_preto: ['#c8ccd2', '#16100c'],
+          relogio_vermelho: ['#c8ccd2', '#d8242c'],
+          relogio_dourado: ['#ffc23a', '#c89a2a'],
+          mochila_esportiva: ['#b07a3a', '#16100c'],
+          mochila_esportiva_azul: ['#2a5fb8', '#16100c'],
+          mochila_esportiva_vermelha: ['#b8302a', '#16100c'],
+          mochila_tatica: ['#1d1e22'],
+          fone: ['#e8e8e8'],
+          fone_preto: ['#16100c'],
+          fone_vermelho: ['#d8242c'],
+          fone_azul: ['#2457c5'],
+          fone_rosa: ['#f07ab0'],
         };
         for (const o of others) add(o, app.accessories.includes(o.id), colors[o.id] ?? [], () => this.update(toggleAccessory(app, o.id)));
         break;

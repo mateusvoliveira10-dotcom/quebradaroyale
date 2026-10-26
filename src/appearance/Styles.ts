@@ -19,6 +19,10 @@ export const HAIRS: Record<HairId, HairStyle> = {
   platinado: { shape: 'fade', base: '#e9e2cf', dark: '#c9bfa6', highlight: '#ffffff', amount: 0.8 },
   reflexo_dourado: { shape: 'fade', base: '#24160d', dark: '#140b06', highlight: '#e8b867', amount: 0.85 },
   reflexo_prateado: { shape: 'fade', base: '#1b1716', dark: '#0d0a0a', highlight: '#d9dde3', amount: 0.85 },
+  // Dreads: modelo 3D (dread_*.glb) por cima do couro cabeludo pintado da mesma cor.
+  dread_preto: { shape: 'fade', base: '#1a120c', dark: '#0d0806', highlight: '#3a2a1e', amount: 0.2 },
+  dread_castanho: { shape: 'fade', base: '#4a2c16', dark: '#2a180b', highlight: '#7a5030', amount: 0.3 },
+  dread_loiro: { shape: 'fade', base: '#b8904c', dark: '#7a5a2a', highlight: '#e8c87c', amount: 0.4 },
 };
 
 // Óculos: modelo 3D único com variações de cor, catálogo em src/customization/glasses.ts.

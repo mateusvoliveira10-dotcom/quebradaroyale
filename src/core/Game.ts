@@ -22,6 +22,7 @@ import { CharacterAsset } from '../player/CharacterAsset';
 import { GarmentAsset } from '../player/GarmentAsset';
 import { CharacterController, ControlInput, emptyControl } from '../player/CharacterController';
 import { Hud, Plate } from '../ui/Hud';
+import { Chat } from '../ui/Chat';
 import { Menu, ModeId } from '../ui/Menu';
 import { Minimap } from '../ui/Minimap';
 import { Overlays } from '../ui/Overlays';
@@ -77,6 +78,8 @@ export class Game {
   readonly loot: LootSystem;
   readonly drop: DropSequence;
   readonly hud: Hud;
+  /** Chat global e privado (Enter abre). */
+  readonly chat: Chat;
   readonly minimap: Minimap;
   readonly menu: Menu;
   readonly overlays: Overlays;
@@ -240,6 +243,9 @@ export class Game {
 
     // ---------- Interface ----------
     this.hud = new Hud(this.input);
+    this.chat = new Chat(() => this.settings.playerName);
+    this.chat.onToggle = () => this.input.releaseAll();
+    this.chat.system('Enter: conversar no chat global · /m Nome texto: mensagem privada');
     this.hud.setPlayerName(this.settings.playerName);
     this.minimap = new Minimap(this.map.features, this.map.half);
     this.overlays = new Overlays();
@@ -646,6 +652,8 @@ export class Game {
   private update(): void {
     const dt = Math.min(this.engine.getDeltaTime() / 1000, 1 / 30);
     const waiting = this.updateCaptureGate(dt);
+    this.chat.enabled = !this.paused && !waiting && this.mode !== this.lobby;
+    if (!this.chat.enabled) this.chat.close();
     if (!this.paused && !waiting) {
       this.combat.time += dt;
       this.nav.newFrame();
@@ -678,6 +686,7 @@ export class Game {
     this.audio.setLoop('plane', this.paused ? 0 : this.drop.engineVolume(camPos));
     const pc = this.player.ctrl;
     this.audio.setLoop('wind', this.paused ? 0 : pc.mode === 'freefall' ? Math.min(1, -pc.velocity.y / 48) * 0.5 : pc.mode === 'parachute' ? 0.12 : 0);
+    if (this.paused || this.mode === this.lobby) this.audio.setLoop('chest', 0);
     this.input.endFrame();
   }
 }

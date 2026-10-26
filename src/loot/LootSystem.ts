@@ -13,8 +13,8 @@ import { WeaponInstance, WeaponSystem } from '../weapons/WeaponSystem';
 import { LootSpot } from '../world/CommunityMap';
 
 export interface LootItem {
-  /** chest = baú (abre com E); shield = energético (escudo). */
-  kind: 'weapon' | 'ammo' | 'chest' | 'shield';
+  /** chest = baú (abre com E); shield = energético (escudo); heal = kit médico (vida). */
+  kind: 'weapon' | 'ammo' | 'chest' | 'shield' | 'heal';
   pos: Vector3;
   root: TransformNode;
   meshes: Mesh[];
@@ -53,6 +53,9 @@ const EPIC_CHEST_WEIGHTS = [0, 6, 36, 44, 14];
 /** Escudo que um energético dá (aos poucos, em ENERGY_TIME s). */
 const ENERGY_SHIELD = 50;
 const ENERGY_TIME = 2.2;
+/** Vida que o kit médico recupera (aos poucos, em MEDKIT_TIME s). */
+const MEDKIT_HEAL = 100;
+const MEDKIT_TIME = 4;
 
 /**
  * Loot espalhado pelo mapa: armas flutuando com anel e feixe de luz na cor da
@@ -66,8 +69,8 @@ export class LootSystem {
   private readonly ammoMats: Record<AmmoType, StandardMaterial>;
   private readonly crateMat: StandardMaterial;
   private nearest: LootItem | null = null;
-  /** Escudo do energético entrando aos poucos. */
-  private readonly drinks: Array<{ actor: Actor; left: number }> = [];
+  /** Escudo do energético e vida do kit médico entrando aos poucos. */
+  private readonly drinks: Array<{ actor: Actor; left: number; stat: 'shield' | 'health'; rate: number }> = [];
   private energyMat: StandardMaterial | null = null;
   private time2 = 0;
   /** Texto de interação atual do jogador (Hud.setPrompt). */
@@ -140,6 +143,8 @@ export class LootSystem {
 
   /** Remove todo o loot (troca de modo / nova partida). */
   clear(): void {
+    this.audio.setLoop('chest', 0);
+    this.drinks.length = 0;
     for (const it of [...this.items]) this.removeItem(it);
     this.nearest = null;
   }
@@ -170,6 +175,9 @@ export class LootSystem {
         const types: AmmoType[] = ['leve', 'leve', 'media', 'media', 'cartucho', 'pesada'];
         const t = rng.pick(types);
         this.spawnAmmo(t, AMMO[t].pickup, spot.pos.clone());
+        // Alguns pontos também têm kit médico ou energético no chão.
+        if (rng.chance(0.12)) this.spawnMedkit(spot.pos.add(new Vector3(-0.7, 0, 0.4)));
+        else if (rng.chance(0.08)) this.spawnShield(spot.pos.add(new Vector3(-0.7, 0, 0.4)));
         if (rng.chance(0.4)) {
           const t2 = rng.pick(types);
           this.spawnAmmo(t2, AMMO[t2].pickup, spot.pos.add(new Vector3(0.6, 0, 0.3)));
@@ -256,62 +264,72 @@ export class LootSystem {
     }
     if (it.epic || rng.chance(0.55)) this.spawnShield(at(0, 2.1));
     if (it.epic) this.spawnShield(at(0.8, 2.0));
+    if (rng.chance(it.epic ? 0.6 : 0.28)) this.spawnMedkit(at(-0.8, 2.0));
   }
 
-  /** Energético (lata): dá escudo aos poucos ao pegar. */
+  /** Energético (modelo enviado): dá escudo aos poucos ao pegar. */
   spawnShield(pos: Vector3): void {
-    if (!this.energyMat) {
-      const tex = new DynamicTexture('energeticoTex', { width: 256, height: 128 }, this.scene, true);
-      const ctx = tex.getContext() as unknown as CanvasRenderingContext2D;
-      const g = ctx.createLinearGradient(0, 0, 0, 128);
-      g.addColorStop(0, '#1b1f2a');
-      g.addColorStop(1, '#0c0e14');
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, 256, 128);
-      ctx.fillStyle = '#39e0ff';
-      ctx.beginPath();
-      ctx.moveTo(0, 70);
-      ctx.lineTo(256, 40);
-      ctx.lineTo(256, 58);
-      ctx.lineTo(0, 88);
-      ctx.fill();
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '900 30px Impact, "Arial Black", sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('ENERGÉTICO', 128, 40);
-      ctx.fillStyle = '#39e0ff';
-      ctx.font = '900 22px Impact, sans-serif';
-      ctx.fillText('+ESCUDO', 128, 112);
-      tex.update();
-      const m = new StandardMaterial('energetico', this.scene);
-      m.diffuseTexture = tex;
-      m.specularColor = new Color3(1, 1, 1);
-      m.specularPower = 80;
-      m.emissiveColor = new Color3(0.25, 0.25, 0.3);
-      this.energyMat = m;
-    }
-    const root = new TransformNode('energetico', this.scene);
+    this.spawnConsumable('shield', pos);
+  }
+
+  /** Kit médico (caixa de medicamentos enviada): recupera vida aos poucos ao pegar. */
+  spawnMedkit(pos: Vector3): void {
+    this.spawnConsumable('heal', pos);
+  }
+
+  private spawnConsumable(kind: 'shield' | 'heal', pos: Vector3): void {
+    const root = new TransformNode(kind === 'shield' ? 'energetico' : 'kitMedico', this.scene);
     root.position.copyFrom(pos);
-    const can = MeshBuilder.CreateCylinder('lata', { diameter: 0.14, height: 0.26, tessellation: 24 }, this.scene);
-    can.material = this.energyMat;
-    can.parent = root;
-    can.position.y = 0.6;
-    const top = MeshBuilder.CreateCylinder('lataTampa', { diameterTop: 0.11, diameterBottom: 0.14, height: 0.02, tessellation: 24 }, this.scene);
-    top.material = this.crateMat;
-    top.parent = can;
-    top.position.y = 0.14;
+    // Nó que gira e flutua (o update mexe em model.root como nas armas).
+    const holder = new TransformNode('consumivel', this.scene);
+    holder.parent = root;
+    holder.position.y = 0.6;
+    const meshes: Mesh[] = [];
+    const p = WorldAssets.current?.texturedProps.get(kind === 'shield' ? 'energetico' : 'kit_medico');
+    if (p) {
+      const inner = new TransformNode('consumivelModelo', this.scene);
+      inner.parent = holder;
+      // Centro do modelo no eixo de giro e um pouco maior que o real para ler de longe.
+      const k = kind === 'shield' ? 1.15 : 1.1;
+      inner.scaling.setAll(k);
+      inner.position.set(-((p.model.min.x + p.model.max.x) / 2) * k, -0.12, -((p.model.min.z + p.model.max.z) / 2) * k);
+      meshes.push(...instantiateModel(p.model, (role) => p.materials.get(role) ?? null, inner, kind));
+    } else {
+      // Sem o modelo: lata azul ou caixa vermelha simples.
+      if (!this.energyMat) {
+        this.energyMat = new StandardMaterial('consumivelReserva', this.scene);
+        this.energyMat.diffuseColor = Color3.FromHexString('#2f7fd8');
+      }
+      const m = kind === 'shield'
+        ? MeshBuilder.CreateCylinder('lata', { diameter: 0.14, height: 0.26, tessellation: 20 }, this.scene)
+        : MeshBuilder.CreateBox('kit', { width: 0.4, height: 0.26, depth: 0.16 }, this.scene);
+      m.material = kind === 'shield' ? this.energyMat : this.crateMat;
+      m.parent = holder;
+      meshes.push(m);
+    }
     const ring = MeshBuilder.CreateDisc('lootRing', { radius: 0.55, tessellation: 32 }, this.scene);
     ring.rotation.x = Math.PI / 2;
     ring.position.y = 0.04;
     ring.parent = root;
-    ring.material = this.ringMats[2];
-    for (const m of [can, top, ring]) m.isPickable = false;
-    const model = { root: can } as unknown as WeaponModel;
-    this.items.push({ kind: 'shield', pos, root, meshes: [ring, can, top], glowMeshes: [], rarity: 2, amount: ENERGY_SHIELD, model, phase: Math.random() * 6, visible: true });
+    ring.material = this.ringMats[kind === 'shield' ? 2 : 1];
+    for (const m of [...meshes, ring]) m.isPickable = false;
+    const model = { root: holder } as unknown as WeaponModel;
+    const amount = kind === 'shield' ? ENERGY_SHIELD : MEDKIT_HEAL;
+    this.items.push({ kind, pos, root, meshes: [ring, ...meshes], glowMeshes: [], rarity: kind === 'shield' ? 2 : 1, amount, model, phase: Math.random() * 6, visible: true });
+  }
+
+  /** Kit médico: vida entrando aos poucos (como o kit do Fortnite, sem passar de 100). */
+  private useMedkit(it: LootItem, actor: Actor, isPlayer: boolean): void {
+    this.drinks.push({ actor, left: it.amount, stat: 'health', rate: MEDKIT_HEAL / MEDKIT_TIME });
+    if (isPlayer) {
+      this.audio.medkit();
+      this.onPickup?.(`Kit médico: +${it.amount} de vida`, '#5cff7a');
+    }
+    this.removeItem(it);
   }
 
   private drinkShield(it: LootItem, actor: Actor, isPlayer: boolean): void {
-    this.drinks.push({ actor, left: it.amount });
+    this.drinks.push({ actor, left: it.amount, stat: 'shield', rate: ENERGY_SHIELD / ENERGY_TIME });
     if (isPlayer) {
       this.audio.drink();
       this.onPickup?.(`Energético: +${it.amount} de escudo`, '#39e0ff');
@@ -448,9 +466,10 @@ export class LootSystem {
     // Energético entrando aos poucos (jogador e bots).
     for (let i = this.drinks.length - 1; i >= 0; i--) {
       const dr = this.drinks[i];
-      const add = Math.min(dr.left, (ENERGY_SHIELD / ENERGY_TIME) * dt);
+      const add = Math.min(dr.left, dr.rate * dt);
       dr.left -= add;
-      if (dr.actor.alive) dr.actor.shield = Math.min(dr.actor.maxShield, dr.actor.shield + add);
+      if (dr.actor.alive && dr.stat === 'shield') dr.actor.shield = Math.min(dr.actor.maxShield, dr.actor.shield + add);
+      if (dr.actor.alive && dr.stat === 'health') dr.actor.health = Math.min(dr.actor.maxHealth, dr.actor.health + add);
       if (dr.left <= 0 || !dr.actor.alive) this.drinks.splice(i, 1);
     }
     // Baús: tampa abrindo (com um pequeno quique) e loot saindo no meio da animação.
@@ -489,7 +508,7 @@ export class LootSystem {
           }
           continue;
         }
-        const vis = d < (it.kind === 'weapon' || it.kind === 'shield' ? 70 : 45);
+        const vis = d < (it.kind === 'weapon' || it.kind === 'shield' || it.kind === 'heal' ? 70 : 45);
         if (vis !== it.visible) {
           it.visible = vis;
           it.root.setEnabled(vis);
@@ -509,7 +528,7 @@ export class LootSystem {
     }
 
     for (const it of this.items) {
-      if (!it.visible || (it.kind !== 'weapon' && it.kind !== 'shield') || !it.model) continue;
+      if (!it.visible || (it.kind !== 'weapon' && it.kind !== 'shield' && it.kind !== 'heal') || !it.model) continue;
       it.phase += dt;
       it.model.root.rotation.y += dt * 1.4;
       it.model.root.position.y = 0.62 + Math.sin(it.phase * 2.2) * 0.07;
@@ -521,6 +540,15 @@ export class LootSystem {
         it.beam.visibility = (0.75 + Math.sin(it.phase * 3) * 0.25) * fade;
       }
     }
+
+    // Baú fechado por perto: o "canto" mágico aumenta conforme chega perto.
+    let chestD = Infinity;
+    for (const it of this.items) {
+      if (it.kind !== 'chest' || it.opened || !it.visible) continue;
+      const d = Vector3.Distance(it.pos, p);
+      if (d < chestD) chestD = d;
+    }
+    this.audio.setLoop('chest', player.alive ? Math.max(0, Math.min(1, (16 - chestD) / 13)) * 0.5 : 0);
 
     this.nearest = null;
     this.prompt = null;
@@ -540,6 +568,10 @@ export class LootSystem {
       }
       if (it.kind === 'shield' && dist < 1.25 && player.shield < player.maxShield) {
         this.drinkShield(it, player, true);
+        continue;
+      }
+      if (it.kind === 'heal' && dist < 1.25 && player.health < player.maxHealth) {
+        this.useMedkit(it, player, true);
         continue;
       }
       if ((it.kind === 'weapon' && dist < 2.2) || (it.kind === 'chest' && !it.opened && dist < 2.0)) {
@@ -572,10 +604,11 @@ export class LootSystem {
     const p = bot.position;
     for (let i = this.items.length - 1; i >= 0; i--) {
       const it = this.items[i];
-      if (it.kind !== 'ammo' && it.kind !== 'shield') continue;
+      if (it.kind !== 'ammo' && it.kind !== 'shield' && it.kind !== 'heal') continue;
       if (Math.hypot(it.pos.x - p.x, it.pos.z - p.z) < 1.3 && Math.abs(it.pos.y - p.y) < 1.6) {
         if (it.kind === 'ammo') this.collectAmmo(it, weapons, false);
-        else if (bot.shield < bot.maxShield) this.drinkShield(it, bot, false);
+        else if (it.kind === 'shield' && bot.shield < bot.maxShield) this.drinkShield(it, bot, false);
+        else if (it.kind === 'heal' && bot.health < bot.maxHealth) this.useMedkit(it, bot, false);
       }
     }
     if (wanted?.kind === 'chest' && this.has(wanted) && Math.hypot(wanted.pos.x - p.x, wanted.pos.z - p.z) < 1.8 && Math.abs(wanted.pos.y - p.y) < 1.8) {
@@ -622,7 +655,7 @@ export class LootSystem {
     if (idx >= 0) this.items.splice(idx, 1);
     for (const m of it.glowMeshes) this.glow.removeIncludedOnlyMesh(m);
     it.sparkles?.dispose();
-    if (it.kind === 'shield') it.model = undefined;
+    if (it.kind === 'shield' || it.kind === 'heal') it.model = undefined;
     if (it.model) {
       it.model.root.parent = null;
       disposeWeaponModel(it.model);

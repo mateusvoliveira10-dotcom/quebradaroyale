@@ -18,7 +18,15 @@ export const HAIR_MESH: Record<HairId, string> = {
   platinado: 'Cabelo_Degrade',
   reflexo_dourado: 'Cabelo_Degrade',
   reflexo_prateado: 'Cabelo_Degrade',
+  dread_preto: 'Cabelo_Degrade',
+  dread_castanho: 'Cabelo_Degrade',
+  dread_loiro: 'Cabelo_Degrade',
 };
+
+/** Cabelos que são um modelo enviado (GLB em assets/world) e não a malha do hair.py. */
+export function isDread(id: HairId): boolean {
+  return id.startsWith('dread_');
+}
 
 export function hairFiles(id: HairId) {
   return {

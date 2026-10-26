@@ -1,6 +1,6 @@
 import { SoundKind } from '../weapons/WeaponDefs';
 
-type LoopName = 'plane' | 'wind';
+type LoopName = 'plane' | 'wind' | 'chest';
 
 interface Loop {
   gain: GainNode;
@@ -216,11 +216,30 @@ export class GameAudio {
 
   /** Baú abrindo: rangido da tampa e o "brilho" do loot (mais rico no épico). */
   chestOpen(epic: boolean): void {
-    this.noiseBurst(0.35, 0.35, 'bandpass', 420, 6, 0, 0.5);
-    this.tone(180, 0.3, 0.12, 'sawtooth', 0.02, 120);
-    const base = epic ? 784 : 660;
-    for (let i = 0; i < 4; i++) this.tone(base * [1, 1.25, 1.5, 2][i], 0.35, 0.16, 'triangle', 0.25 + i * 0.07);
-    if (epic) this.tone(base * 3, 0.5, 0.1, 'sine', 0.55);
+    // Trinco e madeira rangendo, a tampa abrindo num "whoosh", e o brilho subindo em
+    // arpejo com eco até o acorde final (na linha do baú do Fortnite).
+    this.noiseBurst(0.05, 0.5, 'highpass', 2600, 1, 0, 0.6);
+    this.noiseBurst(0.06, 0.35, 'bandpass', 1400, 3, 0.07, 0.6);
+    this.tone(230, 0.32, 0.07, 'sawtooth', 0.1, 150);
+    this.noiseBurst(0.42, 0.3, 'bandpass', 2400, 0.8, 0.14, 0.9, 0.3, 0.2);
+    this.noiseBurst(0.5, 0.22, 'bandpass', 600, 0.7, 0.18, 0.9, 0.2, 3.5);
+    const root = epic ? 587.33 : 523.25;
+    const steps = [1, 1.122, 1.26, 1.498, 1.682, 2, 2.245, 2.52];
+    steps.forEach((k, i) => this.tone(root * k, 0.3, 0.11, 'triangle', 0.24 + i * 0.045, undefined, 0.5));
+    for (const k of [2, 2.52, 3]) this.tone(root * k, 1.1, 0.07, 'sine', 0.62, undefined, 0.7);
+    this.noiseBurst(0.9, 0.08, 'highpass', 7000, 0.5, 0.6, 0.9, 0.6, 1);
+    if (epic) {
+      this.tone(110, 0.6, 0.22, 'sine', 0.2, 70);
+      for (const k of [4, 5.04]) this.tone(root * k, 0.9, 0.05, 'sine', 0.8, undefined, 0.8);
+    }
+  }
+
+  /** Kit médico: velcro abrindo, bandagem e o "plim" de cura. */
+  medkit(): void {
+    for (let i = 0; i < 5; i++) this.noiseBurst(0.06, 0.28, 'highpass', 1800 + i * 300, 1, i * 0.05, 0.7);
+    this.noiseBurst(0.35, 0.15, 'bandpass', 900, 0.8, 0.35, 0.9);
+    this.tone(660, 0.25, 0.1, 'sine', 0.8, undefined, 0.4);
+    this.tone(990, 0.4, 0.1, 'sine', 0.9, undefined, 0.5);
   }
 
   /** Goles do energético. */
@@ -321,6 +340,47 @@ export class GameAudio {
     wn.connect(bp);
     wn.start();
     this.loops.set('wind', { gain: windGain, target: 0 });
+
+    // Baú por perto: acorde etéreo com tremolo e um brilho agudo cintilando.
+    const chestGain = ctx.createGain();
+    chestGain.gain.value = 0;
+    chestGain.connect(master);
+    if (this.reverb) {
+      const s = ctx.createGain();
+      s.gain.value = 0.6;
+      chestGain.connect(s).connect(this.reverb);
+    }
+    const trem = ctx.createGain();
+    trem.gain.value = 0.7;
+    trem.connect(chestGain);
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 5.2;
+    const lfoAmt = ctx.createGain();
+    lfoAmt.gain.value = 0.3;
+    lfo.connect(lfoAmt).connect(trem.gain);
+    lfo.start();
+    for (const [f, v] of [[440, 0.05], [554.37, 0.04], [659.25, 0.04], [880, 0.03], [1318.5, 0.015]] as const) {
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.value = f;
+      o.detune.value = (Math.random() - 0.5) * 8;
+      const g = ctx.createGain();
+      g.gain.value = v;
+      o.connect(g).connect(trem);
+      o.start();
+    }
+    const shimmer = ctx.createBufferSource();
+    shimmer.buffer = noise;
+    shimmer.loop = true;
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'bandpass';
+    hp.frequency.value = 7500;
+    hp.Q.value = 2;
+    const sg = ctx.createGain();
+    sg.gain.value = 0.05;
+    shimmer.connect(hp).connect(sg).connect(trem);
+    shimmer.start();
+    this.loops.set('chest', { gain: chestGain, target: 0 });
   }
 
   setLoop(name: LoopName, volume: number): void {

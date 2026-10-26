@@ -13,7 +13,7 @@ export const PLAYER = {
   walkSpeed: 6.2,
   /** Sprint (Shift). */
   runSpeed: 8.6,
-  crouchSpeed: 3.0,
+  crouchSpeed: 3.4,
   /** Deslizar: agachar durante o sprint. Velocidade inicial, duração e velocidade mínima. */
   slideSpeed: 10.5,
   slideTime: 0.85,
@@ -58,7 +58,7 @@ export const CAMERA = {
   aimShoulderOffset: 0.8,
   /** Altura do ponto mirado acima dos pés do personagem. */
   targetHeight: 1.55,
-  crouchTargetHeight: 1.1,
+  crouchTargetHeight: 1.05,
   sensitivity: 0.0024,
   minBeta: 0.3,
   maxBeta: 1.75,

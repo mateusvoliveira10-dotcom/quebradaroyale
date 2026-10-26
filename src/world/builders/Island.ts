@@ -1,4 +1,5 @@
-import { Color3, DynamicTexture, Mesh, MeshBuilder, StandardMaterial, Texture, Vector3 } from '@babylonjs/core';
+import { Color3, DynamicTexture, FresnelParameters, Mesh, MeshBuilder, StandardMaterial, Texture, TransformNode, Vector3 } from '@babylonjs/core';
+import { instantiateModel } from '../ModelInstance';
 import { WORLD } from '../../core/config';
 import { Rng } from '../../utils/random';
 import { LAKE, OUTER_POIS, SEA_LEVEL, Terrain, TerrainPoi } from '../Terrain';
@@ -73,6 +74,22 @@ export function buildIsland(b: WorldBuilder, terrain: Terrain): IslandResult {
       if (free(x, z, 2)) placeTree(b, 'coqueiro', x, H(x, z), z, rng.range(0, 6), rng.range(0.9, 1.2));
     }
     addCar(b, rng, p.x + 18, p.z - 4, Math.PI / 2);
+    // Estátua do tubarão com o mergulhador na gaiola, no meio da praça.
+    if (placeTextured(b, 'tubarao', p.x - 3, -0.05, p.z - 0.5, Math.PI * 0.85, 1)) {
+      b.collider(6.5, 1.2, 6.5, p.x - 3, 0.6, p.z - 0.5);
+      b.collider(3, 4.5, 3, p.x - 3, 2.6, p.z - 0.5);
+    }
+    // Barco de pesca atracado ao lado do píer (balança na água) e dois puxados na areia.
+    floatingBoat(b, pierX + 4.6, pierZ0 + pierLen * 0.62, 0.08);
+    for (const [ox, oz, ry] of [[-22, 30, 0.5], [24, 27, -0.4]] as const) {
+      const bx = p.x + ox;
+      const bz = p.z + oz;
+      placeTextured(b, 'barco', bx, H(bx, bz) - 0.35, bz, ry, 0.75, [2.4, 1.6]);
+    }
+    // Caixas de peixe (engradados), tambores e redes perto do píer.
+    for (let i = 0; i < 4; i++) placeTextured(b, 'barril', pierX - 3 + i * 0.7, 0, pierZ0 - 2.5, rng.range(0, 6), 1, [0.6, 0.88]);
+    for (let i = 0; i < 6; i++) b.box({ w: 0.7, h: 0.32, d: 0.45, x: pierX + 3 + (i % 3) * 0.75, z: pierZ0 - 2 + Math.floor(i / 3) * 0.5, y: Math.floor(i / 3) * 0.32, mat: m.plasticBlue, tile: 0.7 });
+    loot(p.x - 3, p.z + 5.5, 2, 0.1);
   }
 
   // ---------------------------------------------------------- Lagoa Azul
@@ -273,7 +290,9 @@ export function buildIsland(b: WorldBuilder, terrain: Terrain): IslandResult {
     if (terrain.slopeNy(x, z) < 0.8) continue;
     let species = pickSpecies(rng);
     if (species === 'calcada') species = 'mangueira';
-    if (!placeTree(b, species, x, H(x, z) - 0.1, z, rng.range(0, Math.PI * 2), rng.range(0.9, 1.4))) break;
+    // Parte das árvores são os modelos enviados (arvore1 e arvore2).
+    const sent = rng.chance(0.3) && placeTextured(b, rng.chance(0.5) ? 'arvore1' : 'arvore2', x, H(x, z) - 0.15, z, rng.range(0, Math.PI * 2), rng.range(0.85, 1.15), [0.7, 3]);
+    if (!sent && !placeTree(b, species, x, H(x, z) - 0.1, z, rng.range(0, Math.PI * 2), rng.range(0.9, 1.4))) break;
     reserve(x, z, 3);
     trees++;
     // Arbustos em volta da árvore (como as moitas do Fortnite).
@@ -420,68 +439,216 @@ function signMaterial(b: WorldBuilder, name: string): StandardMaterial {
   return mat;
 }
 
+/** Barco de pesca na água (fora do lote estático): sobe, desce e balança devagar. */
+function floatingBoat(b: WorldBuilder, x: number, z: number, ry: number): void {
+  const p = WorldAssets.current?.texturedProps.get('barco');
+  if (!p) return;
+  const node = new TransformNode('barcoNaAgua', b.scene);
+  node.position.set(x, SEA_LEVEL - 0.55, z);
+  node.rotation.y = ry;
+  instantiateModel(p.model, (role) => p.materials.get(role) ?? null, node, 'barco');
+  b.collider(3, 1.5, 6, x, SEA_LEVEL + 0.3, z, 0, ry, 0);
+  let t = Math.random() * 10;
+  b.scene.onBeforeRenderObservable.add(() => {
+    t += b.scene.getEngine().getDeltaTime() / 1000;
+    node.position.y = SEA_LEVEL - 0.55 + Math.sin(t * 0.9) * 0.12;
+    node.rotation.z = Math.sin(t * 0.7) * 0.03;
+    node.rotation.x = Math.sin(t * 0.55 + 1) * 0.025;
+  });
+}
+
 /** Mar em volta da ilha e a água da lagoa: azul com ondinhas que correm devagar. */
 function buildWater(b: WorldBuilder): void {
   const scene = b.scene;
+  // Ondas: relevo de ondulações (soma de senos que fecha a emenda) virado mapa de normais.
+  const N = 256;
+  const normalTex = new DynamicTexture('aguaNormal', { width: N, height: N }, scene, true);
+  {
+    const ctx = normalTex.getContext() as unknown as CanvasRenderingContext2D;
+    const hgt = new Float32Array(N * N);
+    const waves: Array<[number, number, number, number]> = [];
+    for (let i = 0; i < 14; i++) waves.push([1 + Math.floor(Math.random() * 6), Math.floor(Math.random() * 7) - 3, Math.random() * 6.28, 1 / (1 + i * 0.35)]);
+    for (let y = 0; y < N; y++) {
+      for (let x = 0; x < N; x++) {
+        let v = 0;
+        for (const [kx, ky, ph, amp] of waves) v += Math.sin(((x * kx + y * ky) / N) * Math.PI * 2 + ph) * amp;
+        hgt[y * N + x] = v;
+      }
+    }
+    const img = ctx.createImageData(N, N);
+    for (let y = 0; y < N; y++) {
+      for (let x = 0; x < N; x++) {
+        const at = (xx: number, yy: number) => hgt[((yy + N) % N) * N + ((xx + N) % N)];
+        const dx = (at(x + 1, y) - at(x - 1, y)) * 0.9;
+        const dy = (at(x, y + 1) - at(x, y - 1)) * 0.9;
+        const l = Math.hypot(dx, dy, 1);
+        const o = (y * N + x) * 4;
+        img.data[o] = (-dx / l) * 127 + 128;
+        img.data[o + 1] = (-dy / l) * 127 + 128;
+        img.data[o + 2] = (1 / l) * 127 + 128;
+        img.data[o + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    normalTex.update();
+  }
+  normalTex.wrapU = normalTex.wrapV = Texture.WRAP_ADDRESSMODE;
+  normalTex.level = 0.55;
+
+  // Reflexos de sol e cristas claras desenhadas (dão o brilho em movimento no estilo cartoon).
   const tex = new DynamicTexture('aguaTex', { width: 256, height: 256 }, scene, true);
   const ctx = tex.getContext() as unknown as CanvasRenderingContext2D;
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, 256, 256);
-  for (let i = 0; i < 260; i++) {
+  for (let i = 0; i < 90; i++) {
     const x = Math.random() * 256;
     const y = Math.random() * 256;
-    ctx.strokeStyle = Math.random() < 0.5 ? 'rgba(255,255,255,0.9)' : 'rgba(0,40,70,0.25)';
-    ctx.lineWidth = 1 + Math.random() * 2;
+    ctx.strokeStyle = `rgba(255,255,255,${0.5 + Math.random() * 0.5})`;
+    ctx.lineWidth = 1 + Math.random() * 1.5;
     ctx.beginPath();
     ctx.moveTo(x, y);
-    ctx.quadraticCurveTo(x + 8, y - 3, x + 16 + Math.random() * 10, y);
+    ctx.quadraticCurveTo(x + 6, y - 2, x + 12 + Math.random() * 8, y);
     ctx.stroke();
   }
+  ctx.fillStyle = 'rgba(0,50,80,0.06)';
+  for (let i = 0; i < 40; i++) ctx.fillRect(Math.random() * 256, Math.random() * 256, 30 + Math.random() * 40, 2 + Math.random() * 4);
   tex.update();
   tex.wrapU = tex.wrapV = Texture.WRAP_ADDRESSMODE;
-  // UV em metros (ver worldUV abaixo): uma repetição a cada 6 m.
-  const sea = new StandardMaterial('mar', scene);
-  sea.diffuseColor = Color3.FromHexString('#2c87b0');
-  sea.diffuseTexture = tex;
-  sea.specularColor = new Color3(0.9, 0.9, 0.9);
-  sea.specularPower = 120;
-  sea.emissiveColor = Color3.FromHexString('#0b3550').scale(0.6);
-  sea.alpha = 0.88;
-  sea.metadata = { castShadow: false };
-  // Anel de mar a partir da praia (um disco inteiro aparecia por cima do chão no nível 0).
-  const ring = (r0: number, r1: number) => {
-    const inner: Vector3[] = [];
-    const outer: Vector3[] = [];
-    for (let i = 0; i <= 128; i++) {
-      const a = (i / 128) * Math.PI * 2;
-      inner.push(new Vector3(Math.cos(a) * r0, 0, Math.sin(a) * r0));
-      outer.push(new Vector3(Math.cos(a) * r1, 0, Math.sin(a) * r1));
-    }
-    return MeshBuilder.CreateRibbon('mar', { pathArray: [outer, inner], sideOrientation: Mesh.DOUBLESIDE }, scene);
+
+  const water = (name: string, deepEmissive: string, edge: string): StandardMaterial => {
+    const mat = new StandardMaterial(name, scene);
+    mat.diffuseColor = Color3.White();
+    mat.diffuseTexture = tex;
+    mat.bumpTexture = normalTex;
+    mat.specularColor = new Color3(1, 0.97, 0.9);
+    mat.specularPower = 180;
+    mat.emissiveColor = Color3.FromHexString(deepEmissive);
+    // Fresnel: de longe (rasante) o mar clareia como reflexo do céu; de cima fica fundo.
+    mat.emissiveFresnelParameters = new FresnelParameters({ leftColor: Color3.FromHexString(edge), rightColor: Color3.FromHexString(deepEmissive), bias: 0.15, power: 2.2 });
+    mat.metadata = { castShadow: false };
+    return mat;
   };
-  const ocean = ring(WORLD.radius + 1, 470);
+  const sea = water('mar', '#06283d', '#7cc4e2');
+
+  // Anel de mar a partir da praia em faixas: raso turquesa perto da areia, azul fundo longe
+  // (cor e transparência por vértice). Um disco inteiro aparecia por cima do chão no nível 0.
+  const bands: Array<[number, string, number]> = [
+    [WORLD.radius - 1, '#5fe0d0', 0.55],
+    [WORLD.radius + 8, '#34c3c8', 0.72],
+    [WORLD.radius + 22, '#1f8fbf', 0.86],
+    [WORLD.radius + 60, '#145f9e', 0.93],
+    [470, '#0d4580', 0.96],
+  ];
+  const SEG = 160;
+  const paths: Vector3[][] = bands.map(([r]) => {
+    const path: Vector3[] = [];
+    for (let i = 0; i <= SEG; i++) {
+      const a = (i / SEG) * Math.PI * 2;
+      path.push(new Vector3(Math.cos(a) * r, 0, Math.sin(a) * r));
+    }
+    return path;
+  });
+  const ocean = MeshBuilder.CreateRibbon('mar', { pathArray: paths.reverse(), sideOrientation: Mesh.DOUBLESIDE }, scene);
   ocean.position.y = SEA_LEVEL;
+  {
+    const pos = ocean.getVerticesData('position')!;
+    const col: number[] = [];
+    for (let i = 0; i < pos.length; i += 3) {
+      const r = Math.hypot(pos[i], pos[i + 2]);
+      let k = 0;
+      while (k < bands.length - 2 && r > bands[k + 1][0]) k++;
+      const [r0, c0, a0] = bands[k];
+      const [r1, c1, a1] = bands[k + 1];
+      const t = Math.min(1, Math.max(0, (r - r0) / (r1 - r0)));
+      const ca = Color3.FromHexString(c0);
+      const cb = Color3.FromHexString(c1);
+      const cc = Color3.Lerp(ca, cb, t);
+      col.push(cc.r, cc.g, cc.b, a0 + (a1 - a0) * t);
+    }
+    ocean.setVerticesData('color', col);
+    ocean.hasVertexAlpha = true;
+  }
   const worldUV = (mesh: Mesh) => {
     const p = mesh.getVerticesData('position')!;
     const uv: number[] = [];
-    for (let i = 0; i < p.length; i += 3) uv.push(p[i] / 6, p[i + 2] / 6);
+    for (let i = 0; i < p.length; i += 3) uv.push(p[i] / 9, p[i + 2] / 9);
     mesh.setVerticesData('uv', uv);
   };
   worldUV(ocean);
   ocean.material = sea;
   ocean.isPickable = false;
   ocean.receiveShadows = true;
-  // Material próprio com a MESMA textura (clonar o material clona a DynamicTexture, e o
-  // clone nunca fica pronto: a cena nunca ficava "pronta" e a foto do minimapa não saía).
-  const lakeMat = new StandardMaterial('lagoa', scene);
-  lakeMat.diffuseTexture = tex;
-  lakeMat.diffuseColor = Color3.FromHexString('#3a8f8a');
-  lakeMat.specularColor = sea.specularColor.clone();
-  lakeMat.specularPower = sea.specularPower;
-  lakeMat.emissiveColor = sea.emissiveColor.clone();
-  lakeMat.alpha = sea.alpha;
-  lakeMat.metadata = { castShadow: false };
-  const lake = MeshBuilder.CreateDisc('lagoa', { radius: LAKE.r + 2, tessellation: 40 }, scene);
+
+  // Espuma na linha da praia: faixa branca recortada que vai e volta com a onda.
+  const terrain = Terrain.current;
+  const foamTex = new DynamicTexture('espuma', { width: 512, height: 64 }, scene, true);
+  {
+    const fctx = foamTex.getContext() as unknown as CanvasRenderingContext2D;
+    fctx.clearRect(0, 0, 512, 64);
+    for (let i = 0; i < 700; i++) {
+      const x = Math.random() * 512;
+      const y = 20 + Math.random() * 30;
+      const r = 1 + Math.random() * 4;
+      fctx.fillStyle = `rgba(255,255,255,${0.35 + Math.random() * 0.6})`;
+      fctx.beginPath();
+      fctx.ellipse(x, y, r * 2.2, r, 0, 0, Math.PI * 2);
+      fctx.fill();
+    }
+    const g = fctx.createLinearGradient(0, 0, 0, 64);
+    g.addColorStop(0, 'rgba(255,255,255,0)');
+    g.addColorStop(0.45, 'rgba(255,255,255,0.9)');
+    g.addColorStop(0.6, 'rgba(255,255,255,0.35)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    fctx.fillStyle = g;
+    fctx.fillRect(0, 0, 512, 64);
+    foamTex.update();
+  }
+  foamTex.hasAlpha = true;
+  foamTex.wrapU = Texture.WRAP_ADDRESSMODE;
+  foamTex.wrapV = Texture.CLAMP_ADDRESSMODE;
+  const foamMat = new StandardMaterial('espuma', scene);
+  foamMat.diffuseTexture = foamTex;
+  foamMat.useAlphaFromDiffuseTexture = true;
+  foamMat.emissiveColor = new Color3(0.55, 0.6, 0.62);
+  foamMat.specularColor = Color3.Black();
+  foamMat.backFaceCulling = false;
+  foamMat.zOffset = -2;
+  foamMat.metadata = { castShadow: false };
+  let foam: Mesh | null = null;
+  if (terrain) {
+    const inner: Vector3[] = [];
+    const outer: Vector3[] = [];
+    const FS = 360;
+    for (let i = 0; i <= FS; i++) {
+      const a = (i / FS) * Math.PI * 2;
+      const cx = Math.cos(a);
+      const cz = Math.sin(a);
+      // Onde o chão desce abaixo do mar, procurando de dentro para fora.
+      let r = WORLD.radius - 40;
+      while (r < WORLD.radius + 30 && terrain.height(cx * r, cz * r) > SEA_LEVEL) r += 0.5;
+      inner.push(new Vector3(cx * (r - 2.2), SEA_LEVEL + 0.04, cz * (r - 2.2)));
+      outer.push(new Vector3(cx * (r + 2.6), SEA_LEVEL + 0.04, cz * (r + 2.6)));
+    }
+    foam = MeshBuilder.CreateRibbon('espuma', { pathArray: [inner, outer] }, scene);
+    const uv: number[] = [];
+    for (const path of [inner, outer]) {
+      let acc = 0;
+      for (let i = 0; i < path.length; i++) {
+        if (i > 0) acc += Vector3.Distance(path[i], path[i - 1]);
+        uv.push(acc / 14, path === inner ? 1 : 0);
+      }
+    }
+    foam.setVerticesData('uv', uv);
+    foam.material = foamMat;
+    foam.isPickable = false;
+  }
+
+  // Lagoa: mesma água, mais verde e calma. Material próprio com as MESMAS texturas (clonar o
+  // material clona a DynamicTexture, e o clone nunca fica pronto: a foto do minimapa não saía).
+  const lakeMat = water('lagoa', '#083a36', '#8fd6c8');
+  lakeMat.diffuseColor = Color3.FromHexString('#4cb8a8');
+  lakeMat.alpha = 0.86;
+  const lake = MeshBuilder.CreateDisc('lagoa', { radius: LAKE.r + 2, tessellation: 48 }, scene);
   lake.rotation.x = Math.PI / 2;
   lake.position.set(LAKE.x, LAKE.level, LAKE.z);
   worldUV(lake);
@@ -490,8 +657,15 @@ function buildWater(b: WorldBuilder): void {
   let t = 0;
   scene.onBeforeRenderObservable.add(() => {
     t += scene.getEngine().getDeltaTime() / 1000;
-    tex.uOffset = t * 0.004;
-    tex.vOffset = Math.sin(t * 0.3) * 0.003;
+    tex.uOffset = t * 0.006;
+    tex.vOffset = Math.sin(t * 0.3) * 0.004;
+    normalTex.uOffset = -t * 0.011;
+    normalTex.vOffset = t * 0.007;
+    if (foam) {
+      // A espuma avança e recua na areia e "anda" de lado.
+      foamTex.vOffset = Math.sin(t * 0.8) * 0.12;
+      foamTex.uOffset = t * 0.01;
+      foamMat.alpha = 0.75 + Math.sin(t * 0.8 + 1.2) * 0.2;
+    }
   });
-  void (ocean as Mesh);
 }

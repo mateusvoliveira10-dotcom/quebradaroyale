@@ -1,3 +1,4 @@
+import { spraySpeckle, weather } from '../Spray';
 import {
   Color3,
   Color4,
@@ -719,54 +720,64 @@ export class LobbyScene {
     return this.mat(`roupa_${kind}_${color}`, '#ffffff', { tex, alpha: true, twoSided: true, emissive: 0.12, spec: 0.02 });
   }
 
-  /** Puxadinho na lateral esquerda com grafite "QUEBRADA" (identidade do jogo). */
+  /** Puxadinho na lateral esquerda com o logo do jogo grafitado (identidade do jogo). */
   private buildMuroGrafitado(): void {
     const wall = this.box(0.22, 2.5, 4.6, -5.15, 0, -2.75, this.m.hq.muro, undefined, 2.5);
     wall.receiveShadows = true;
     const tex = new DynamicTexture('grafiteLobby', { width: 1024, height: 512 }, this.scene, true);
     const ctx = tex.getContext() as unknown as CanvasRenderingContext2D;
     ctx.clearRect(0, 0, 1024, 512);
-    // Fundo de spray em manchas.
-    const blobs = ['#ff4fa3', '#25c4ff', '#ffd21f', '#2bd46b', '#a35bff'];
-    for (let i = 0; i < 22; i++) {
-      const x = this.rng.range(80, 940);
-      const y = this.rng.range(110, 400);
-      const r = this.rng.range(50, 130);
-      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-      g.addColorStop(0, `${blobs[i % blobs.length]}cc`);
-      g.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = g;
-      ctx.fillRect(x - r, y - r, r * 2, r * 2);
-    }
-    ctx.font = '900 190px "Arial Black", Impact, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.lineJoin = 'round';
-    ctx.save();
-    ctx.translate(512, 250);
-    ctx.rotate(-0.06);
-    ctx.scale(0.86, 1);
-    ctx.lineWidth = 34;
-    ctx.strokeStyle = '#141318';
-    ctx.strokeText('QUEBRADA', 0, 0);
-    ctx.lineWidth = 16;
-    ctx.strokeStyle = '#ffffff';
-    ctx.strokeText('QUEBRADA', 0, 0);
-    const fill = ctx.createLinearGradient(0, -90, 0, 90);
-    fill.addColorStop(0, '#ffd21f');
-    fill.addColorStop(1, '#ff7a1f');
-    ctx.fillStyle = fill;
-    ctx.fillText('QUEBRADA', 0, 0);
-    ctx.restore();
-    ctx.font = 'italic 700 64px "Segoe Script", "Brush Script MT", cursive';
-    ctx.fillStyle = '#2bd46b';
-    ctx.fillText('royale', 760, 400);
+    // O logo do jogo grafitado: recorta o fundo branco da imagem, e pinta como spray
+    // (névoa em volta, escorridos e desgaste deixando o reboco aparecer).
+    const img = new Image();
+    img.onload = () => {
+      const W = 1024;
+      const H = 512;
+      const k = Math.min((W * 0.9) / img.width, (H * 0.94) / img.height);
+      const w = img.width * k;
+      const h = img.height * k;
+      const x0 = (W - w) / 2;
+      const y0 = (H - h) / 2;
+      const off = document.createElement('canvas');
+      off.width = Math.round(w);
+      off.height = Math.round(h);
+      const oc = off.getContext('2d')!;
+      oc.drawImage(img, 0, 0, off.width, off.height);
+      keyOutWhite(oc, off.width, off.height);
+      // Névoa de spray atrás do desenho (sombra borrada da própria silhueta).
+      ctx.save();
+      ctx.shadowColor = 'rgba(20,16,30,0.75)';
+      ctx.shadowBlur = 22;
+      ctx.globalAlpha = 0.55;
+      ctx.drawImage(off, x0, y0 + 6, w, h);
+      ctx.restore();
+      ctx.drawImage(off, x0, y0, w, h);
+      // Escorridos saindo da base das letras.
+      const rng = this.rng;
+      for (let i = 0; i < 16; i++) {
+        const x = x0 + w * rng.range(0.08, 0.92);
+        const y = y0 + h * rng.range(0.58, 0.8);
+        const px = ctx.getImageData(Math.round(x), Math.round(y), 1, 1).data;
+        if (px[3] < 200) continue;
+        ctx.strokeStyle = `rgb(${px[0]},${px[1]},${px[2]})`;
+        ctx.lineWidth = rng.range(2.5, 5);
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x, y + rng.range(20, 70));
+        ctx.stroke();
+      }
+      spraySpeckle(ctx, rng, x0, y0, w, h, '#ffd21f', 260);
+      weather(ctx, rng, 0, 0, W, H, 1.3);
+      tex.update();
+    };
+    img.src = `${import.meta.env.BASE_URL}logo.webp`;
     tex.update();
     tex.hasAlpha = true;
     const mat = new StandardMaterial('lobby_grafite', this.scene);
     mat.diffuseTexture = tex;
     mat.useAlphaFromDiffuseTexture = true;
-    mat.emissiveColor = new Color3(0.2, 0.2, 0.2);
+    mat.emissiveColor = new Color3(0.13, 0.13, 0.13);
     mat.specularColor = Color3.Black();
     mat.zOffset = -1;
     const plane = MeshBuilder.CreatePlane('grafite', { width: 4.2, height: 2.1 }, this.scene);
@@ -927,4 +938,40 @@ export class LobbyScene {
     dust.blendMode = ParticleSystem.BLENDMODE_ADD;
     this.particles.push(dust);
   }
+}
+
+/**
+ * Apaga o fundo branco do logo: só o branco ligado à borda (preenchimento a partir das
+ * bordas), assim o branco das letras de "ROYALE" continua. Borda suave no recorte.
+ */
+function keyOutWhite(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+  const im = ctx.getImageData(0, 0, w, h);
+  const d = im.data;
+  const white = (i: number) => d[i * 4] > 228 && d[i * 4 + 1] > 228 && d[i * 4 + 2] > 228;
+  const seen = new Uint8Array(w * h);
+  const stack: number[] = [];
+  for (let x = 0; x < w; x++) stack.push(x, (h - 1) * w + x);
+  for (let y = 0; y < h; y++) stack.push(y * w, y * w + w - 1);
+  while (stack.length) {
+    const i = stack.pop()!;
+    if (seen[i] || !white(i)) continue;
+    seen[i] = 1;
+    d[i * 4 + 3] = 0;
+    const x = i % w;
+    if (x > 0) stack.push(i - 1);
+    if (x < w - 1) stack.push(i + 1);
+    if (i >= w) stack.push(i - w);
+    if (i < w * (h - 1)) stack.push(i + w);
+  }
+  // Pixels claros colados no recorte ficam meio transparentes (sem franja branca).
+  for (let i = 0; i < w * h; i++) {
+    if (seen[i] || d[i * 4 + 3] === 0) continue;
+    const x = i % w;
+    const near = (x > 0 && seen[i - 1]) || (x < w - 1 && seen[i + 1]) || (i >= w && seen[i - w]) || (i < w * (h - 1) && seen[i + w]);
+    if (near) {
+      const lum = (d[i * 4] + d[i * 4 + 1] + d[i * 4 + 2]) / 3;
+      d[i * 4 + 3] = Math.min(255, Math.max(0, (255 - lum) * 3));
+    }
+  }
+  ctx.putImageData(im, 0, 0);
 }

@@ -3,12 +3,20 @@ import { GLASSES_CATALOG, GLASSES_LEGACY, GlassesVariantId } from '../customizat
 import { DEFAULT_JERSEY, JERSEY_CATALOG, JERSEY_LEGACY, JerseyId } from '../customization/jerseys';
 import { Rng } from '../utils/random';
 
-export type HairId = 'degrade_baixo' | 'degrade_americano' | 'risquinho' | 'cacheado' | 'platinado' | 'reflexo_dourado' | 'reflexo_prateado';
+export type HairId = 'degrade_baixo' | 'degrade_americano' | 'risquinho' | 'cacheado' | 'platinado' | 'reflexo_dourado' | 'reflexo_prateado'
+  | 'dread_preto' | 'dread_castanho' | 'dread_loiro';
 /** Variação do modelo único de óculos, ou 'nenhum'. */
 export type GlassesId = 'nenhum' | GlassesVariantId;
 /** Camisa do catálogo, ou 'none' (sem camisa). */
 export type JerseyChoice = JerseyId | 'none';
-export type AccessoryId = ChainId | 'bone_tras' | 'bone_frente' | 'bone_aba_reta' | 'pulseiras' | 'relogio' | 'mochila';
+export type WatchId = 'relogio' | 'relogio_azul' | 'relogio_preto' | 'relogio_vermelho' | 'relogio_dourado';
+export type BackpackId = 'mochila_esportiva' | 'mochila_esportiva_azul' | 'mochila_esportiva_vermelha' | 'mochila_tatica';
+export type HeadphoneId = 'fone' | 'fone_preto' | 'fone_vermelho' | 'fone_azul' | 'fone_rosa';
+export type AccessoryId = ChainId | 'bone_tras' | 'bone_frente' | 'bone_aba_reta' | 'pulseiras' | 'pulseira_ouro' | WatchId | BackpackId | HeadphoneId;
+
+export const WATCHES: WatchId[] = ['relogio', 'relogio_azul', 'relogio_preto', 'relogio_vermelho', 'relogio_dourado'];
+export const BACKPACKS: BackpackId[] = ['mochila_esportiva', 'mochila_esportiva_azul', 'mochila_esportiva_vermelha', 'mochila_tatica'];
+export const HEADPHONES: HeadphoneId[] = ['fone', 'fone_preto', 'fone_vermelho', 'fone_azul', 'fone_rosa'];
 export type BottomId = 'bermuda_esportiva' | 'bermuda_jeans' | 'calca_cargo' | 'calca_jogger' | 'calca_jeans'
   | 'bermuda_tactel_degrade' | 'bermuda_tactel_preta' | 'bermuda_tactel_vermelha' | 'bermuda_camuflada' | 'bermuda_moletom' | 'calca_tactel' | 'calca_moletom';
 export type ShoesId = 'tenis_branco' | 'tenis_preto' | 'tenis_casual' | 'chuteira'
@@ -36,6 +44,9 @@ export const HAIR_OPTIONS: Option<HairId>[] = [
   { id: 'platinado', name: 'Platinado' },
   { id: 'reflexo_dourado', name: 'Reflexos dourados' },
   { id: 'reflexo_prateado', name: 'Reflexos prateados' },
+  { id: 'dread_preto', name: 'Dread preto' },
+  { id: 'dread_castanho', name: 'Dread castanho' },
+  { id: 'dread_loiro', name: 'Dread loiro' },
 ];
 
 export const GLASSES_OPTIONS: Option<GlassesId>[] = [{ id: 'nenhum', name: 'Sem óculos' }, ...GLASSES_CATALOG.map((g) => ({ id: g.id, name: g.name }))];
@@ -48,9 +59,22 @@ export const ACCESSORY_OPTIONS: Option<AccessoryId>[] = [
   { id: 'bone_frente', name: 'Boné aba curva (frente)' },
   { id: 'bone_aba_reta', name: 'Boné aba reta (frente)' },
   { id: 'bone_tras', name: 'Boné aba reta (para trás)' },
-  { id: 'pulseiras', name: 'Pulseiras' },
-  { id: 'relogio', name: 'Relógio' },
-  { id: 'mochila', name: 'Mochila' },
+  { id: 'pulseiras', name: 'Pulseiras de miçanga' },
+  { id: 'pulseira_ouro', name: 'Pulseira de ouro' },
+  { id: 'relogio', name: 'Relógio (mostrador verde)' },
+  { id: 'relogio_azul', name: 'Relógio (mostrador azul)' },
+  { id: 'relogio_preto', name: 'Relógio (mostrador preto)' },
+  { id: 'relogio_vermelho', name: 'Relógio (mostrador vermelho)' },
+  { id: 'relogio_dourado', name: 'Relógio dourado' },
+  { id: 'mochila_esportiva', name: 'Mochila esportiva caramelo' },
+  { id: 'mochila_esportiva_azul', name: 'Mochila esportiva azul' },
+  { id: 'mochila_esportiva_vermelha', name: 'Mochila esportiva vermelha' },
+  { id: 'mochila_tatica', name: 'Mochila tática' },
+  { id: 'fone', name: 'Headphone branco' },
+  { id: 'fone_preto', name: 'Headphone preto' },
+  { id: 'fone_vermelho', name: 'Headphone vermelho' },
+  { id: 'fone_azul', name: 'Headphone azul' },
+  { id: 'fone_rosa', name: 'Headphone rosa' },
 ];
 
 export const BOTTOM_OPTIONS: Option<BottomId>[] = [
@@ -84,6 +108,9 @@ export const SHOES_OPTIONS: Option<ShoesId>[] = [
 const EXCLUSIVE: AccessoryId[][] = [
   ['bone_tras', 'bone_frente', 'bone_aba_reta'],
   CHAIN_CATALOG.map((c) => c.id),
+  WATCHES,
+  BACKPACKS,
+  HEADPHONES,
 ];
 
 export function defaultAppearance(): Appearance {
@@ -124,7 +151,7 @@ export function loadAppearance(): Appearance {
     const o = JSON.parse(raw) as Partial<Appearance>;
     // Correntes antigas (argola simples) viram a corrente equivalente.
     const acc = Array.isArray(o.accessories)
-      ? o.accessories.map((a) => CHAIN_LEGACY[a as string] ?? a).filter((a) => ACCESSORY_OPTIONS.some((x) => x.id === a))
+      ? o.accessories.map((a) => CHAIN_LEGACY[a as string] ?? ((a as string) === 'mochila' ? 'mochila_tatica' : a)).filter((a) => ACCESSORY_OPTIONS.some((x) => x.id === a))
       : d.accessories;
     return {
       hair: valid(HAIR_OPTIONS, o.hair, d.hair),
@@ -155,8 +182,10 @@ export function randomAppearance(rng: Rng, jersey?: JerseyId): Appearance {
   if (rng.chance(0.5)) acc.push(rng.pick(CHAIN_CATALOG).id);
   if (rng.chance(0.4)) acc.push(rng.pick(['bone_tras', 'bone_frente', 'bone_aba_reta'] as const));
   if (rng.chance(0.3)) acc.push('pulseiras');
-  if (rng.chance(0.3)) acc.push('relogio');
-  if (rng.chance(0.25)) acc.push('mochila');
+  if (rng.chance(0.15)) acc.push('pulseira_ouro');
+  if (rng.chance(0.3)) acc.push(rng.pick(WATCHES));
+  if (rng.chance(0.3)) acc.push(rng.pick(BACKPACKS));
+  if (rng.chance(0.15)) acc.push(rng.pick(HEADPHONES));
   return {
     hair: rng.pick(HAIR_OPTIONS).id,
     glasses: rng.chance(0.45) ? rng.pick(GLASSES_OPTIONS).id : 'nenhum',

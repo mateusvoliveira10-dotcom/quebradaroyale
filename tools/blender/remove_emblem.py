@@ -23,7 +23,7 @@ import common  # noqa: E402
 args = common.script_args()
 path = os.path.abspath(args[0])
 px, py, pz, radius = (float(v) for v in args[1:5])
-preview = os.path.abspath(args[5]) if len(args) > 5 else None
+preview = os.path.abspath(args[5]) if len(args) > 5 and args[5] != '-' else None
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.import_scene.gltf(filepath=path)
@@ -70,7 +70,8 @@ def px_at(p):
 
 
 # Cor da lataria: logo abaixo do emblema (fora dele).
-ref = px_at((px, py, pz - radius * 1.7))
+# 'lado' (6º argumento): a cor vem do lado do emblema (ex.: grade preta do Gol).
+ref = px_at((px, py + radius * 1.9, pz)) if len(args) > 6 and args[6] == 'lado' else px_at((px, py, pz - radius * 1.7))
 if ref is None:
     raise SystemExit('raio não atingiu a lataria')
 rx, ry = int(ref[0]), int(ref[1])

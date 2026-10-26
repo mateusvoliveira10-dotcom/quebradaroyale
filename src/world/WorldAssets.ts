@@ -31,8 +31,8 @@ export interface WorldModel {
 export type CarModelId = 'hatch' | 'seda' | 'perua' | 'picape' | 'besouro';
 export const CAR_MODELS: readonly CarModelId[] = ['hatch', 'seda', 'perua', 'picape', 'besouro'];
 
-export type DetailedVehicleId = 'fusca' | 'viatura' | 'ambulancia' | 'kombi';
-export const DETAILED_VEHICLES: readonly DetailedVehicleId[] = ['fusca', 'viatura', 'ambulancia', 'kombi'];
+export type DetailedVehicleId = 'fusca' | 'viatura' | 'ambulancia' | 'kombi' | 'gol' | 'onibus';
+export const DETAILED_VEHICLES: readonly DetailedVehicleId[] = ['fusca', 'viatura', 'ambulancia', 'kombi', 'gol', 'onibus'];
 
 export interface DetailedVehicle {
   /** Versão de perto e de longe. */
@@ -117,7 +117,12 @@ export class WorldAssets {
         console.warn(`[WorldAssets] ${id}.glb não carregou:`, e);
       }
     }
-    for (const id of ['saco_lixo', 'pneus', 'barril']) {
+    for (const id of [
+      'saco_lixo', 'pneus', 'barril', 'kit_medico', 'tubarao', 'cone', 'energetico', 'barco', 'arvore1', 'arvore2', 'cristo',
+      'mochila_esportiva', 'mochila_esportiva_azul', 'mochila_esportiva_vermelha', 'mochila_tatica',
+      'relogio', 'relogio_azul', 'relogio_preto', 'relogio_vermelho', 'relogio_dourado',
+      'fone', 'fone_preto', 'fone_vermelho', 'fone_azul', 'fone_rosa', 'dread_preto', 'dread_castanho', 'dread_loiro',
+    ]) {
       try {
         const p = await loadTexturedProp(scene, `${base}${id}.glb`, id);
         if (p) assets.texturedProps.set(id, p);
@@ -180,7 +185,9 @@ export class WorldAssets {
 /** Prop texturizado (`Prop_<id>`), com os materiais do próprio GLB. */
 async function loadTexturedProp(scene: Scene, url: string, id: string): Promise<{ model: WorldModel; materials: Map<string, Material> } | null> {
   const c = await LoadAssetContainerAsync(url, scene);
-  const model = collect(scene, c.meshes).get(`Prop_${id}`);
+  const models = collect(scene, c.meshes);
+  // Variações de cor (recolor.py) guardam o nome do modelo de origem (Prop_relogio em relogio_azul.glb).
+  const model = models.get(`Prop_${id}`) ?? [...models].find(([k]) => k.startsWith('Prop_'))?.[1];
   if (!model) return null;
   const materials = new Map<string, Material>();
   for (const mat of c.materials) {

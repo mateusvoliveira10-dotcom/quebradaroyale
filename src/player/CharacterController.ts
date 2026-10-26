@@ -296,10 +296,11 @@ export class CharacterController {
       if (this.crouching) {
         this.slideTimer = 0;
         this.tryStand();
-      } else if (wasGrounded) {
+      } else {
+        // No ar também agacha (cai já agachado, como no Fortnite); o deslize é só no chão.
         const hs = Math.hypot(this.velocity.x, this.velocity.z);
         this.setCrouch(true);
-        if (this.sprinting && hs > PLAYER.walkSpeed) {
+        if (wasGrounded && this.sprinting && hs > PLAYER.walkSpeed) {
           this.slideTimer = PLAYER.slideTime;
           this.slideDir.set(this.velocity.x / hs, 0, this.velocity.z / hs);
         }

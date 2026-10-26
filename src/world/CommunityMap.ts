@@ -20,7 +20,7 @@ import {
   addWall,
 } from './builders/Props';
 import { buildShop, ShopKind } from './builders/Shops';
-import { scatterVegetation } from './builders/Vegetation';
+import { placeTextured, scatterVegetation } from './builders/Vegetation';
 import { WorldBuilder } from './WorldBuilder';
 
 /** 0 = comum (rua/beco), 1 = bom (lajes), 2 = alto (lojas, morro, caixa d'água). */
@@ -457,6 +457,20 @@ function buildStreetLife(b: WorldBuilder, rng: Rng, loot: LootSpot[]): void {
     if (Math.abs(x) > half - 6 || Math.abs(z) > half - 6) continue;
     if (!addVehicle(b, 'fusca', x, z, ry + (fr.chance(0.5) ? Math.PI : 0))) break;
     if (fr.chance(0.35)) loot.push({ pos: new Vector3(x + (ry === 0 ? 0 : 1.6) * Math.sign(-x || 1), 0.1, z + (ry === 0 ? 1.6 : 0) * Math.sign(-z || 1)), tier: 0 });
+  }
+  // Ônibus urbanos (modelo enviado) parados em dois pontos das avenidas.
+  for (const [x, z, ry] of [[138, -2.6, 0], [2.6, 108, Math.PI / 2]] as const) addVehicle(b, 'onibus', x, z, ry + (fr.chance(0.5) ? Math.PI : 0));
+  // Cones de trânsito: em volta da viatura e da ambulância, e soltos na beira das ruas.
+  const cr = new Rng(7070);
+  const cone = (x: number, z: number) => placeTextured(b, 'cone', x, 0.02, z, cr.range(0, 6), cr.range(0.95, 1.05), [0.35, 0.7]);
+  for (const [vx, vz, along] of [[-66, -2.45, true], [2.45, 66, false], [100, -2.45, true], [-2.45, -82, false]] as const) {
+    for (let k = -1; k <= 1; k++) cone(vx + (along ? k * 3.2 : -4.2), vz + (along ? -4.2 : k * 3.2));
+  }
+  for (let i = 0; i < 26; i++) {
+    const t = cr.range(14, half - 10) * (cr.chance(0.5) ? 1 : -1);
+    const side = cr.chance(0.5) ? 1 : -1;
+    if (cr.chance(0.5)) cone(t, side * 4.4);
+    else cone(side * 4.4, t);
   }
   addDumpster(b, rng, 19, 2.4, 0);
   addDumpster(b, rng, -2.4, -27, Math.PI / 2);

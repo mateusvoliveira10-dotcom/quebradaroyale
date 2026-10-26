@@ -81,8 +81,9 @@ Blender, centenas de MB) e `backups/` não vão para o repositório.
 | `W A S D`              | Mover (relativo à câmera)                         |
 | `Shift`                | Correr                                            |
 | `Espaço`               | Pular / escalar / passar por cima de muros        |
-| `C`                    | Agachar                                           |
-| `E`                    | Pegar arma                                        |
+| `C` / `Ctrl`           | Agachar (também no ar; no sprint vira deslize)    |
+| `E`                    | Pegar arma / abrir baú                            |
+| `Enter`                | Chat (`/m Nome texto` = privado, `/r` responde)   |
 | `1` `2` / `Q`          | Escolher arma / alternar                          |
 | Mouse esq. / dir.      | Atirar / mirar                                    |
 | `R`                    | Recarregar                                        |
@@ -138,6 +139,28 @@ Blender, centenas de MB) e `backups/` não vão para o repositório.
   nome entalhado. **Carros** de script com carroceria arredondada (subdivisão no Blender).
 - **Chão piscando:** relevo abaixo do chão da comunidade e das áreas planas, camadas da
   mata separadas e deslocamento de profundidade em trilhas, calçadas, faixas e quadra.
+
+## Vila dos Pescadores, itens, chat e personagem (atualização)
+
+- **Vila dos Pescadores:** estátua do tubarão com o mergulhador na gaiola na praça, barco de
+  pesca balançando ao lado do píer, dois barcos na areia, tambores e caixas de peixe.
+- **Água:** degradê de raso turquesa a azul fundo, mapa de normais com ondas andando,
+  reflexo (fresnel) e espuma que vai e volta na linha da praia; lagoa no mesmo estilo.
+- **Mapa:** Cristo no alto do morro, árvores enviadas (arvore1/arvore2) na ilha, Gol quadrado
+  nas vagas, ônibus nas avenidas e cones em volta da viatura, da ambulância e nas ruas.
+- **Itens:** energético com o modelo enviado (+50 de escudo) e **kit médico** (+100 de vida
+  em 4 s), nos baús e em alguns pontos do mapa. Som do baú como no Fortnite: canto mágico
+  perto do baú fechado e, ao abrir, trinco, rangido, whoosh e brilho subindo.
+- **Grafites** pintados com spray direto na parede (névoa, sombra 3D, escorridos e desgaste,
+  sem fundo de adesivo); no lobby, o **logo do jogo grafitado** na parede esquerda.
+- **Faixas do asfalto** visíveis de longe (deslocamento de profundidade forte).
+- **Agachar** estilo Fortnite: corpo baixo ao andar agachado e agachar no ar.
+- **Avião** com para-brisa emoldurado, escotilhas redondas, porta, radome, luzes e escape.
+- **Personagem:** mochila esportiva (3 cores, com alças) e tática, relógio com textura
+  (mostrador verde, azul, preto, vermelho e dourado), pulseira de ouro em elos, pulseiras de
+  miçanga refeitas, headphone em 5 cores e cabelo **dread** preto, castanho e loiro.
+- **Chat** (`src/ui/Chat.ts`): global e privado. Hoje as abas do mesmo navegador conversam
+  entre si; para o online basta trocar o `ChatTransport` por um de WebSocket.
 
 ## Ilha circular estilo Fortnite
 

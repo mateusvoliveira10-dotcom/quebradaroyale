@@ -58,6 +58,8 @@ MAT = {
     'escuro': pbr('aviao_escuro', '#24272d', 0.4, 0.45),
     'vidro': pbr('aviao_vidro', '#0d1620', 0.6, 0.08),
     'borracha': pbr('aviao_borracha', '#16171a', 0.0, 0.8),
+    'vermelho': pbr('aviao_vermelho', '#e0261e', 0.1, 0.3),
+    'moldura': pbr('aviao_moldura', '#3a3e45', 0.5, 0.4),
 }
 MAT_LIST = list(MAT)
 
@@ -145,7 +147,27 @@ rings = [ring(t) for t in ts]
 fv, ff = loft(rings)
 fmats = []
 WIN_T = [0.27 + 0.034 * i for i in range(5)] + [0.62 + 0.034 * i for i in range(3)]
-for f in ff:
+panes_v, panes_f = [], []
+
+
+def add_pane(pts, inset=0.82, lift=0.012):
+    """Vidraça sobre uma face: encolhida para o centro e levantada pela normal."""
+    pts = [Vector(p) for p in pts]
+    ctr = sum(pts, Vector()) / len(pts)
+    nrm = (pts[1] - pts[0]).cross(pts[2] - pts[0])
+    if nrm.length < 1e-9:
+        return
+    nrm.normalize()
+    if nrm.dot(Vector((ctr.x, 0, ctr.z))) < 0:
+        nrm = -nrm
+    base = len(panes_v)
+    for p in pts:
+        panes_v.append(ctr + (p - ctr) * inset + nrm * lift)
+    panes_f.append(list(range(base, base + len(pts))))
+
+
+cab = {}
+for k, f in enumerate(ff):
     pts = np.array([fv[i] for i in f])
     cx, cy, cz = pts.mean(0)
     t = (cy - Y_NOSE) / L
@@ -160,12 +182,66 @@ for f in ff:
         role = 'amarelo'                                 # filete
     # janelas da cabine (no alto do nariz)
     if 0.075 < t < 0.15 and 0.22 < rel < 0.8 and abs(cx) < a * 0.92 and abs(cx) > a * 0.05:
-        role = 'vidro'
-    # janelinhas da cabine de carga, logo acima da faixa
-    if 0.2 < rel < 0.42 and any(abs(t - w) < 0.008 for w in WIN_T) and abs(cx) > a * 0.6:
-        role = 'vidro'
+        role = 'moldura'
+        if k < (len(rings) - 1) * N_RING:
+            cab.setdefault((k % N_RING) // 2, []).append(k // N_RING)
+    # radome do nariz (cinza escuro, como nos cargueiros)
+    if t < 0.035:
+        role = 'cinza'
     fmats.append(role)
 fus = new_obj('Fuselagem', fv, ff, fmats)
+# Para-brisa em painéis largos: cada painel cobre 2 colunas da fuselagem e todas as linhas
+# da cabine naquela coluna (moldura fina entre um e outro).
+for col, rows in cab.items():
+    i0, i1 = min(rows), max(rows) + 1
+    j0, j1 = col * 2, min(col * 2 + 2, N_RING)
+    if i1 - i0 < 2:
+        continue
+    quad = [rings[i0][j0], rings[i0][j1 % N_RING], rings[i1][j1 % N_RING], rings[i1][j0]]
+    add_pane(quad, inset=0.88, lift=0.015)
+vidros = new_obj('Vidros', panes_v, panes_f, ['vidro'] * len(panes_f))
+
+
+def disc(center, normal, r, role, n=14, depth=0.0):
+    """Disco (com espessura opcional) virado para `normal`."""
+    nrm = Vector(normal).normalized()
+    up = Vector((0, 0, 1)) if abs(nrm.z) < 0.9 else Vector((0, 1, 0))
+    u = nrm.cross(up).normalized()
+    v = nrm.cross(u).normalized()
+    ring_front = [Vector(center) + (u * math.cos(2 * math.pi * k / n) + v * math.sin(2 * math.pi * k / n)) * r for k in range(n)]
+    if depth <= 0:
+        return new_obj('disco', ring_front, [list(range(n)) if nrm.dot(u.cross(v)) > 0 else list(range(n))[::-1]], [role])
+    ring_back = [p - nrm * depth for p in ring_front]
+    verts, faces = loft([ring_back, ring_front])
+    return new_obj('disco', verts, faces, [role] * len(faces))
+
+
+# Escotilhas redondas da cabine de carga (aro de metal + vidro), dos dois lados.
+extras = []
+for side in (-1, 1):
+    for w in WIN_T:
+        a, b, cc = section(w)
+        zc = cc + 0.4 * b
+        sn = 0.4 ** (SUPER / 2)
+        x = side * a * (math.sqrt(max(0.0, 1 - sn * sn))) ** (2 / SUPER)
+        y = Y_NOSE + w * L
+        extras.append(disc((x + side * 0.02, y, zc), (side, 0, 0), 0.26, 'metal', depth=0.05))
+        extras.append(disc((x + side * 0.03, y, zc), (side, 0, 0), 0.2, 'vidro'))
+# Porta da tripulação (lado esquerdo, atrás da cabine): moldura escura e janelinha.
+a, b, cc = section(0.2)
+px = -(a + 0.012)
+for (y0, y1, z0, z1) in [(-8.5, -7.45, -1.25, 0.75)]:
+    for (ya, yb, za, zb) in [(y0, y1, z1 - 0.05, z1), (y0, y1, z0, z0 + 0.05), (y0, y0 + 0.05, z0, z1), (y1 - 0.05, y1, z0, z1)]:
+        extras.append(new_obj('porta', [(px, ya, za), (px, yb, za), (px, yb, zb), (px, ya, zb)], [[3, 2, 1, 0]], ['moldura']))
+    extras.append(disc((px - 0.005, (y0 + y1) / 2, 0.25), (-1, 0, 0), 0.16, 'vidro'))
+# Luzes anticolisão (vermelhas, em cima e embaixo) e antenas finas no teto.
+extras.append(disc((0, 1.5, B0 + 0.02), (0, 0, 1), 0.16, 'vermelho', depth=0.12))
+extras.append(disc((0, 0.5, -B0 - 0.02), (0, 0, -1), 0.16, 'vermelho', depth=0.12))
+for (ay, h) in [(-4.0, 0.55), (-2.0 + 7.5, 0.4)]:
+    blade = [(-0.03, ay, B0 - 0.05), (0.03, ay, B0 - 0.05), (0.03, ay + 0.5, B0 - 0.05), (-0.03, ay + 0.5, B0 - 0.05),
+             (-0.02, ay + 0.35, B0 + h), (0.02, ay + 0.35, B0 + h), (0.02, ay + 0.5, B0 + h), (-0.02, ay + 0.5, B0 + h)]
+    bf = [[0, 1, 2, 3], [4, 7, 6, 5], [0, 4, 5, 1], [1, 5, 6, 2], [2, 6, 7, 3], [3, 7, 4, 0]]
+    extras.append(new_obj('antena', blade, bf, ['escuro'] * 6))
 
 # ------------------------------------------------------------------ superfícies aerodinâmicas
 def airfoil(n=18, thick=0.13, camber=0.02):
@@ -253,6 +329,13 @@ for idx, ex in enumerate(ENG_X):
     v, f = loft(nr)
     roles = ['metal' if (np.array([v[i] for i in fc]).mean(0)[1] < y0 + 0.5) else 'cinza' for fc in f]
     nacelles.append(new_obj(f'Nacele_{idx}', v, f, roles))
+    side = 1 if ex > 0 else -1
+    exr = []
+    for i in range(4):
+        y = wle + 0.6 + i * 0.35
+        exr.append([(ex + side * 0.55 + 0.13 * math.cos(2 * math.pi * j / 10), y, wz - 0.75 + 0.13 * math.sin(2 * math.pi * j / 10)) for j in range(10)])
+    v2, f2 = loft(exr, cap_end=False)
+    nacelles.append(new_obj(f'Escape_{idx}', v2, f2, ['escuro'] * len(f2)))
     # cubo (spinner) cônico
     hub = Vector((ex, y0 - 0.02, wz - 0.5))
     sp = []
@@ -360,7 +443,7 @@ for side in (-1, 1):
     labels.append(text_mesh('BR', 1.6, (side * 0.24, TAIL_Y + 2.2, B0 + 2.6), (math.pi / 2, 0, side * math.pi / 2), 'azul'))
 
 # ------------------------------------------------------------------ junta, origem, export
-body_parts = [fus, wing, fin, stab] + nacelles + fair + labels + [o for o in bpy.data.objects if o.name.startswith('Cubo_')]
+body_parts = [fus, vidros, wing, fin, stab] + nacelles + fair + labels + extras + [o for o in bpy.data.objects if o.name.startswith('Cubo_')]
 for o in bpy.context.view_layer.objects:
     o.select_set(False)
 for o in body_parts:

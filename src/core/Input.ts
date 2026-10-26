@@ -136,7 +136,7 @@ export class Input {
     }
   }
 
-  private releaseAll(): void {
+  releaseAll(): void {
     this.down.clear();
     this.mouseDown.clear();
   }

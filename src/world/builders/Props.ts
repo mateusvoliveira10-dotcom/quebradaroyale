@@ -1,4 +1,5 @@
 import { Color3, DynamicTexture, Material, MeshBuilder, PBRMaterial, StandardMaterial, Vector3, Vector4, VertexBuffer } from '@babylonjs/core';
+import { sprayPiece, spraySpeckle, weather } from '../Spray';
 import { studioMaterial } from '../../player/GlassesMaterial';
 import { Rng } from '../../utils/random';
 import { GRAFFITI_TILES } from '../Materials';
@@ -39,6 +40,10 @@ export interface SignOptions {
  * `facing` = direção para onde a placa olha no eixo Z.
  */
 export function addSign(b: WorldBuilder, text: string, o: SignOptions): void {
+  if (o.graffiti) {
+    addGraffitiPiece(b, text, o);
+    return;
+  }
   const resW = 1024;
   const resH = Math.max(96, Math.round((resW * o.height) / o.width));
   const tex = new DynamicTexture(`sign_${text}`, { width: resW, height: resH }, b.scene, true);
@@ -124,6 +129,49 @@ export function addSign(b: WorldBuilder, text: string, o: SignOptions): void {
     if (o.axis === 'x') b.box({ w: 0.1, h: o.height + 0.14, d: o.width + 0.14, x: o.x + o.facing * 0.055, z: o.z, cy: o.y, mat: b.mats.metalDark });
     else b.box({ w: o.width + 0.14, h: o.height + 0.14, d: 0.1, x: o.x, z: o.z + o.facing * 0.055, cy: o.y, mat: b.mats.metalDark });
   }
+}
+
+/**
+ * Grafite de letras na parede: tinta de spray direto no reboco (sem fundo nem moldura de
+ * adesivo), com névoa, sombra 3D, escorridos e desgaste; a luz e a sombra da parede valem
+ * para a tinta também.
+ */
+function addGraffitiPiece(b: WorldBuilder, text: string, o: SignOptions): void {
+  const resW = 1024;
+  const resH = Math.max(128, Math.round((resW * o.height) / o.width));
+  const tex = new DynamicTexture(`grafite_${text}`, { width: resW, height: resH }, b.scene, true);
+  const ctx = tex.getContext() as unknown as CanvasRenderingContext2D;
+  ctx.clearRect(0, 0, resW, resH);
+  const rng = new Rng(text.length * 97 + text.charCodeAt(0));
+  const fg = Color3.FromHexString(o.fg);
+  const light = Color3.Lerp(fg, Color3.White(), 0.35).toHexString();
+  const dark = fg.scale(0.62).toHexString();
+  const outlines = ['#ffffff', '#ffd21f', '#25c4ff', '#ff4fa3'];
+  const outline = outlines.find((c) => c.toLowerCase() !== o.fg.toLowerCase()) ?? '#ffffff';
+  spraySpeckle(ctx, rng, resW * 0.04, resH * 0.08, resW * 0.92, resH * 0.84, o.fg, 500);
+  sprayPiece(ctx, { word: text, x: resW * 0.03, y: resH * 0.04, w: resW * 0.94, h: resH * 0.9, fill: [light, dark], outline, shadow: '#1b1530', haze: `${o.fg}66`, rng });
+  weather(ctx, rng, 0, 0, resW, resH, 1);
+  tex.update();
+  tex.hasAlpha = true;
+  const mat = new StandardMaterial(`grafiteMat_${text}`, b.scene);
+  mat.diffuseTexture = tex;
+  mat.useAlphaFromDiffuseTexture = true;
+  mat.emissiveColor = new Color3(0.06, 0.06, 0.06);
+  mat.specularColor = new Color3(0.04, 0.04, 0.04);
+  mat.zOffset = -2;
+  const plane = MeshBuilder.CreatePlane(`grafite_${text}`, { width: o.width, height: o.height }, b.scene);
+  plane.material = mat;
+  plane.isPickable = false;
+  const out = 0.02;
+  if (o.axis === 'x') {
+    plane.position.set(o.x + o.facing * out, o.y, o.z);
+    plane.rotation.y = o.facing > 0 ? -Math.PI / 2 : Math.PI / 2;
+  } else {
+    plane.position.set(o.x, o.y, o.z + o.facing * out);
+    if (o.facing > 0) plane.rotation.y = Math.PI;
+  }
+  plane.receiveShadows = true;
+  plane.freezeWorldMatrix();
 }
 
 /** Sorteio fixo a partir de uma posição (não consome o gerador do mapa). */
@@ -531,6 +579,8 @@ export function addCar(b: WorldBuilder, rng: Rng, x: number, z: number, ry: numb
   const id = variant === 'comum' ? pickCarModel(r) : r.pick(['hatch', 'seda'] as const);
   // A perua de cars.py deu lugar à Kombi enviada (modelo detalhado com textura).
   if (id === 'perua' && addVehicle(b, 'kombi', x, z, ry)) return;
+  // Gol quadrado (modelo enviado) em parte das vagas de hatch e sedã.
+  if ((id === 'hatch' || id === 'seda') && r.chance(0.5) && addVehicle(b, 'gol', x, z, ry)) return;
   const model = assets.cars.get(id)!;
   const paint = variant === 'taxi' ? m.carTaxi : variant === 'policia' ? m.carPaints[2] : r.pick(m.carPaints);
   // Perua de duas cores: teto/saia de cima branco; a viatura tem portas escuras.

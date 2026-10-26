@@ -1,4 +1,5 @@
 import { Color3, DynamicTexture, FresnelParameters, Material, Scene, StandardMaterial, Texture } from '@babylonjs/core';
+import { sprayPiece, spraySpeckle, weather } from './Spray';
 import { shareTint } from './StaticBatcher';
 import { Rng } from '../utils/random';
 import { MaterialsHQ } from './MaterialsHQ';
@@ -332,14 +333,15 @@ export class Materials {
         ctx.rect(0, 0, tw, th);
         ctx.clip();
         this.drawGraffiti(ctx, tw, th, i);
+        weather(ctx, this.rng, 0, 0, tw, th, 0.8);
         ctx.restore();
       }
     }, true, (s) => s / 4);
-    this.graffiti = this.make('graffiti', '#ffffff', { tex: graffitiTex, castShadow: false, emissive: 0.05 });
-    // Recorte por alfa (sem mistura): não precisa ordenar e entra no lote estático normal.
-    this.graffiti.useAlphaFromDiffuseTexture = false;
-    this.graffiti.alphaCutOff = 0.45;
-    this.graffiti.zOffset = -1;
+    this.graffiti = this.make('graffiti', '#ffffff', { tex: graffitiTex, castShadow: false, emissive: 0.04 });
+    // Tinta com borda macia de spray (mistura por alfa): recorte duro parecia adesivo.
+    this.graffiti.useAlphaFromDiffuseTexture = true;
+    this.graffiti.specularColor = new Color3(0.03, 0.03, 0.03);
+    this.graffiti.zOffset = -2;
 
     const clothColors = ['#e8413a', '#2f7fe0', '#ffd21f', '#ffffff', '#1fa64a', '#f07ab0', '#7a4ac8', '#ff8a1f'];
     this.clothes = clothColors.map((c, i) => this.make(`cloth_${i}`, c, { tex: noiseTex, castShadow: false }));
@@ -393,6 +395,12 @@ export class Materials {
     this.hq.calcada.zOffset = -1;
     this.hq.asfalto.zOffset = -1;
     for (const [mat, z] of [[this.cement, -1], [this.field, -1], [this.sidewalk, -1], [this.roadWhite, -3]] as const) mat.zOffset = z;
+    // Faixas do asfalto ficam 1,5 cm acima dele: sem deslocamento de profundidade forte elas
+    // perdiam para o asfalto a partir de uns 25 m (só iam aparecendo quando chegava perto).
+    for (const mat of [this.roadLine, this.roadWhite]) {
+      mat.zOffset = -4;
+      mat.zOffsetUnits = -4;
+    }
     // Peças do kit das casas que eram cor lisa (caixa de fibra, plástico, calha, borracha).
     this.hq.caixa.diffuseTexture = this.surfaceTex.plastic;
     this.hq.plastico.diffuseTexture = this.surfaceTex.plastic;
@@ -1277,9 +1285,29 @@ export class Materials {
       ctx.lineTo(w * 0.94, h * 0.9);
       ctx.lineWidth = h * 0.025;
       ctx.stroke();
+      // Escorridos de spray parado tempo demais no mesmo lugar.
+      ctx.lineWidth = h * 0.012;
+      for (let q = 0; q < 5; q++) {
+        const x = w * this.rng.range(0.1, 0.9);
+        const y0 = h * this.rng.range(0.3, 0.85);
+        ctx.beginPath();
+        ctx.moveTo(x, y0);
+        ctx.lineTo(x, Math.min(h * 0.99, y0 + h * this.rng.range(0.05, 0.2)));
+        ctx.stroke();
+      }
+      spraySpeckle(ctx, this.rng, 0, h * 0.05, w, h * 0.9, ctx.strokeStyle as string, 70);
       return;
     }
-    const font = i < 6 ? `900 ${h * 0.68}px "Arial Black", Impact, sans-serif` : `italic 700 ${h * 0.55}px "Segoe Script", "Brush Script MT", cursive`;
+    const fillA = palette[(i * 5 + 2) % palette.length];
+    if (i < 6) {
+      // Bomb de letras gordas: névoa, sombra 3D, brilho e escorridos (sprayPiece).
+      const fillB = palette[(i * 5 + 4) % palette.length];
+      const out = palette[(i * 3 + 1) % palette.length];
+      spraySpeckle(ctx, this.rng, w * 0.05, h * 0.1, w * 0.9, h * 0.8, fillA, 160);
+      sprayPiece(ctx, { word, x: w * 0.04, y: h * 0.06, w: w * 0.92, h: h * 0.86, fill: [fillA, fillB === fillA ? '#141318' : fillB], outline: out === fillA ? '#ffffff' : out, shadow: '#1a1420', haze: `${fillA}55`, rng: this.rng });
+      return;
+    }
+    const font = `italic 700 ${h * 0.55}px "Segoe Script", "Brush Script MT", cursive`;
     ctx.font = font;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
