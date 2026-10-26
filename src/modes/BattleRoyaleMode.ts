@@ -1,6 +1,5 @@
 import { Terrain } from '../world/Terrain';
 import { Vector3 } from '@babylonjs/core';
-import { randomAppearance } from '../appearance/Appearance';
 import { KillEvent } from '../combat/CombatManager';
 import type { BotEntry, Game } from '../core/Game';
 import { DROP } from '../core/config';
@@ -18,8 +17,8 @@ function smooth(x: number): number {
   return t * t * (3 - 2 * t);
 }
 
-/** Quantos bots entram no Battle Royale: 29 + o jogador = 30 participantes. */
-export const BR_BOTS = 29;
+/** Quantos bots entram no Battle Royale: 49 + o jogador = 50 participantes. */
+export const BR_BOTS = 49;
 
 /**
  * Battle Royale: entrada SEMPRE pelo avião, sem respawn. Bots saltam em
@@ -120,7 +119,9 @@ export class BattleRoyaleMode implements GameMode {
       b.weapons.clear();
       b.weapons.enabled = true;
       b.weapons.infiniteReserve = false;
-      b.actor.ctrl.model.setAppearance(randomAppearance(this.rng));
+      // Visual fixo de cada bot (sorteado na tela de carregamento): refazer 49 visuais a cada
+      // partida atrasava a entrada em uns 2 segundos. Só refaz se o Deathmatch trocou a camisa.
+      if (JSON.stringify(b.actor.ctrl.model.currentAppearance) !== JSON.stringify(b.look)) b.actor.ctrl.model.setAppearance(b.look);
       b.brain.resetBrain();
       // Cada bot mira uma região diferente para pousar.
       const target = spots[(i * 7) % spots.length];

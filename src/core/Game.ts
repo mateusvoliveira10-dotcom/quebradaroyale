@@ -2,7 +2,7 @@ import { buildWeaponModel, disposeWeaponModel } from '../weapons/WeaponModels';
 import { WEAPONS, WeaponId } from '../weapons/WeaponDefs';
 import { placeAt } from '../world/Places';
 import { Color3, Engine, Matrix, Scene, StandardMaterial, SubMesh, Texture, Vector3 } from '@babylonjs/core';
-import { Appearance, loadAppearance, saveAppearance } from '../appearance/Appearance';
+import { Appearance, loadAppearance, randomAppearance, saveAppearance } from '../appearance/Appearance';
 import { Bot } from '../bots/Bot';
 import { ThirdPersonCamera } from '../camera/ThirdPersonCamera';
 import { Actor, TEAM_COLORS } from '../combat/Actor';
@@ -38,6 +38,7 @@ import { Materials } from '../world/Materials';
 import { StaticBatcher } from '../world/StaticBatcher';
 import { WorldAssets } from '../world/WorldAssets';
 import { WorldBuilder } from '../world/WorldBuilder';
+import { enableSelectionOctree } from '../world/Culling';
 import { GameAudio } from './Audio';
 import { CAMERA, WORLD } from './config';
 import { Input } from './Input';
@@ -49,12 +50,14 @@ export interface BotEntry {
   weapons: WeaponSystem;
   brain: Bot;
   active: boolean;
+  /** Visual fixo do bot no Battle Royale (sorteado uma vez, na tela de carregamento). */
+  look: Appearance;
 }
 
 const BOT_NAMES = ['Biel do Morro', 'MC Pivete', 'Jão da Laje', 'Dudu Treta', 'Kauã Zika', 'Pedrinho', 'Lelê', 'Juninho', 'Tiozão', 'Neguinho'];
 /** Bots criados na tela de carregamento (o Deathmatch usa 9). */
-/** Bots criados na tela de carregamento (o Battle Royale usa 29). */
-const WARM_BOTS = 29;
+/** Bots criados na tela de carregamento (o Battle Royale usa 49: 50 na partida). */
+const WARM_BOTS = 49;
 /** Centro do Galpão da Quebrada (longe do mapa principal). */
 const GALPAO_CENTER = new Vector3(0, 0, 560);
 
@@ -135,6 +138,7 @@ export class Game {
     progress(0.88, 'Preparando personagem e gráficos…', 0.98);
     await new Promise((r) => setTimeout(r, 20));
     await game.warmup();
+    enableSelectionOctree(scene);
     progress(1, 'Pronto!');
     // Em segundo plano: a foto do Babylon espera um quadro ser desenhado, e com a aba em
     // segundo plano isso só acontece quando ela volta — não pode prender o carregamento.
@@ -169,6 +173,13 @@ export class Game {
     const g = GALPAO_CENTER;
     const training = await shot(new Vector3(g.x - 6, 2.4, g.z + 19), new Vector3(g.x + 2, 1.4, g.z - 14), 0.95);
     this.menu.setModeArt({ br, dm, training });
+    // Fundo do minimapa (o mapa todo visto de cima): antes era feito no clique de JOGAR e
+    // atrasava a entrada na partida.
+    if (!this.minimapFresh) {
+      this.minimapFresh = true;
+      const url = await renderMapTopDown(this.engine, this.scene, WORLD.radius + 12, 1024);
+      this.minimap.setBackground(url, WORLD.radius + 12);
+    }
     // Fotos das armas (escolha de arma do Deathmatch): cada modelo num "estúdio" no alto.
     for (const id of Object.keys(WEAPONS) as WeaponId[]) {
       const m = buildWeaponModel(s, id, 1);
@@ -303,11 +314,19 @@ export class Game {
    */
   private async warmup(): Promise<void> {
     while (this.bots.length < WARM_BOTS) this.bots.push(this.createBot(this.bots.length));
-    const meshes = this.player.ctrl.model.meshes;
+    // Shaders de todos os visuais (roupas, cabelos, acessórios dos bots) compilados aqui,
+    // na tela de carregamento: antes cada bot novo na tela dava um engasgo.
+    const meshes = [this.player.ctrl.model, ...this.bots.map((b) => b.actor.ctrl.model)].flatMap((m) => m.meshes);
     // Limite de tempo: o aquecimento nunca pode prender a tela de carregamento.
     const timeout = new Promise<void>((resolve) => setTimeout(resolve, 8000));
     const ready = (async () => {
-      for (const m of meshes) await m.material?.forceCompilationAsync(m);
+      const seen = new Set<string>();
+      for (const m of meshes) {
+        const k = `${m.material?.uniqueId}|${m.skeleton ? 1 : 0}|${m.hasInstances ? 1 : 0}`;
+        if (!m.material || seen.has(k)) continue;
+        seen.add(k);
+        await m.material.forceCompilationAsync(m);
+      }
       // Texturas de todas as roupas: trocar de peça no menu fica instantâneo.
       const garmentTextures = (GarmentAsset.current?.allMaterials ?? []).flatMap((m) => [m.albedoTexture!, m.bumpTexture!]);
       await new Promise<void>((resolve) => Texture.WhenAllReady(garmentTextures, resolve));
@@ -330,11 +349,6 @@ export class Game {
 
   startMode(id: ModeId): void {
     this.audio.unlock();
-    // Refaz o fundo do minimapa na primeira partida, já com tudo carregado.
-    if (!this.minimapFresh) {
-      this.minimapFresh = true;
-      void renderMapTopDown(this.engine, this.scene, WORLD.radius + 12, 1024).then((url) => this.minimap.setBackground(url, WORLD.radius + 12));
-    }
     // A música tema fica na abertura e no lobby; a partida começa sem ela.
     music.stop();
     this.overlays.hideAll();
@@ -456,8 +470,10 @@ export class Game {
     const weapons = new WeaponSystem(this.scene, actor, this.combat, this.audio, null, () => this.camera.camera.position);
     const brain = new Bot(actor, weapons, this.rng);
     this.wireCharacter(actor);
+    const look = randomAppearance(this.rng);
+    ctrl.model.setAppearance(look);
     ctrl.root.setEnabled(false);
-    return { actor, weapons, brain, active: false };
+    return { actor, weapons, brain, active: false, look };
   }
 
   /** Dano de queda e avisos de recuperação para qualquer personagem. */
@@ -663,7 +679,12 @@ export class Game {
   private update(): void {
     const dt = Math.min(this.engine.getDeltaTime() / 1000, 1 / 30);
     const waiting = this.updateCaptureGate(dt);
-    this.chat.enabled = !this.paused && !waiting && this.mode !== this.lobby;
+    // No lobby o chat também funciona (Enter), menos digitando em outro campo (nome etc.).
+    const typing = document.activeElement instanceof HTMLInputElement && !document.activeElement.closest('#chat');
+    // Camada de brilho (2–3 ms por quadro): no lobby sempre; na partida só com clarão de
+    // tiro ou traçante na tela.
+    this.env.glow.isEnabled = this.mode === this.lobby || this.effects.glowing;
+    this.chat.enabled = this.mode === this.lobby ? !typing && !this.overlays.blocking : !this.paused && !waiting;
     if (!this.chat.enabled) this.chat.close();
     if (!this.paused && !waiting) {
       this.combat.time += dt;

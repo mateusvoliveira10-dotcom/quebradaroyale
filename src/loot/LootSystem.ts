@@ -1,6 +1,6 @@
-import { Color3, Color4, DynamicTexture, GlowLayer, Mesh, MeshBuilder, ParticleSystem, Scene, StandardMaterial, TransformNode, Vector3 } from '@babylonjs/core';
+import { AbstractMesh, Color3, Color4, DynamicTexture, GlowLayer, Mesh, MeshBuilder, ParticleSystem, Scene, StandardMaterial, TransformNode, Vector3 } from '@babylonjs/core';
 import { softDot } from '../world/FxTextures';
-import { instantiateModel } from '../world/ModelInstance';
+import { instanceModel, instanceOf } from '../world/ModelInstance';
 import { WorldAssets } from '../world/WorldAssets';
 import { ThirdPersonCamera } from '../camera/ThirdPersonCamera';
 import { Actor } from '../combat/Actor';
@@ -17,7 +17,7 @@ export interface LootItem {
   kind: 'weapon' | 'ammo' | 'chest' | 'shield' | 'heal';
   pos: Vector3;
   root: TransformNode;
-  meshes: Mesh[];
+  meshes: AbstractMesh[];
   glowMeshes: Mesh[];
   def?: WeaponDef;
   rarity: number;
@@ -194,29 +194,36 @@ export class LootSystem {
     root.position.set(pos.x, pos.y - 0.1, pos.z);
     root.rotation.y = ry;
     const mat = (role: string) => c.materials.get(role) ?? null;
-    const meshes = instantiateModel(c.base, mat, root, 'bau_base');
+    const meshes = instanceModel(c.base, mat, root, 'bau_base');
     // Dobradiça: aresta de trás e de baixo da tampa (+Z no modelo, ver chest.py).
     const hinge = new Vector3((c.lid.min.x + c.lid.max.x) / 2, c.lid.min.y, c.lid.max.z);
     const lid = new TransformNode('bauTampa', this.scene);
     lid.parent = root;
     lid.position.copyFrom(hinge);
-    for (const m of instantiateModel(c.lid, mat, lid, 'bau_tampa')) {
+    for (const m of instanceModel(c.lid, mat, lid, 'bau_tampa')) {
       m.position.copyFrom(hinge.scale(-1));
       meshes.push(m);
     }
     // Brilho discreto: faíscas subindo (douradas; azuis no épico) e anel suave no chão.
-    const ring = MeshBuilder.CreateDisc('bauBrilho', { radius: 0.9, tessellation: 32 }, this.scene);
+    const ring = instanceOf(epic ? 'bauBrilhoEpico' : 'bauBrilho', () => {
+      const d = MeshBuilder.CreateDisc('bauBrilho', { radius: 0.9, tessellation: 32 }, this.scene);
+      d.visibility = 0.55;
+      return d;
+    }, this.ringMats[epic ? 2 : 4], root);
     ring.rotation.x = Math.PI / 2;
     ring.position.y = 0.03;
-    ring.parent = root;
-    ring.material = this.ringMats[epic ? 2 : 4];
-    ring.visibility = 0.55;
-    ring.isPickable = false;
     ring.setEnabled(false);
     meshes.push(ring);
+    this.items.push({ kind: 'chest', pos: pos.clone(), root, meshes, glowMeshes: [], rarity: epic ? 3 : 1, amount: 1, phase: 0, visible: true, lid, epic, opened: false, openT: 0 });
+  }
+
+  /** Faíscas do baú: só existem enquanto o jogador está perto (criar 200 de uma vez travava o início). */
+  private chestSparkles(it: LootItem): ParticleSystem {
+    const epic = !!it.epic;
+    const pos = it.root.position;
     const sp = new ParticleSystem('bauFaiscas', 40, this.scene);
     sp.particleTexture = softDot(this.scene);
-    sp.emitter = new Vector3(pos.x, pos.y + 0.35, pos.z);
+    sp.emitter = new Vector3(pos.x, pos.y + 0.45, pos.z);
     sp.minEmitBox = new Vector3(-0.42, -0.2, -0.32);
     sp.maxEmitBox = new Vector3(0.42, 0.35, 0.32);
     const col = epic ? new Color4(0.45, 0.7, 1, 1) : new Color4(1, 0.82, 0.35, 1);
@@ -234,7 +241,7 @@ export class LootSystem {
     sp.maxEmitPower = 0.5;
     sp.gravity = new Vector3(0, 0.1, 0);
     sp.blendMode = ParticleSystem.BLENDMODE_ADD;
-    this.items.push({ kind: 'chest', pos: pos.clone(), root, meshes, glowMeshes: [], rarity: epic ? 3 : 1, amount: 1, phase: 0, visible: true, lid, epic, opened: false, openT: 0, sparkles: sp });
+    return sp;
   }
 
   /** Abre o baú: a tampa sobe (e fica aberta) e o loot salta para a frente. */
@@ -242,7 +249,8 @@ export class LootSystem {
     if (it.kind !== 'chest' || it.opened) return;
     it.opened = true;
     it.openT = 0;
-    it.sparkles?.stop();
+    it.sparkles?.dispose();
+    it.sparkles = undefined;
     it.meshes[it.meshes.length - 1]?.setEnabled(false);
     if (byPlayer) this.audio.chestOpen(!!it.epic);
   }
@@ -284,7 +292,7 @@ export class LootSystem {
     const holder = new TransformNode('consumivel', this.scene);
     holder.parent = root;
     holder.position.y = 0.6;
-    const meshes: Mesh[] = [];
+    const meshes: AbstractMesh[] = [];
     const p = WorldAssets.current?.texturedProps.get(kind === 'shield' ? 'energetico' : 'kit_medico');
     if (p) {
       const inner = new TransformNode('consumivelModelo', this.scene);
@@ -293,7 +301,7 @@ export class LootSystem {
       const k = kind === 'shield' ? 1.15 : 1.1;
       inner.scaling.setAll(k);
       inner.position.set(-((p.model.min.x + p.model.max.x) / 2) * k, -0.12, -((p.model.min.z + p.model.max.z) / 2) * k);
-      meshes.push(...instantiateModel(p.model, (role) => p.materials.get(role) ?? null, inner, kind));
+      meshes.push(...instanceModel(p.model, (role) => p.materials.get(role) ?? null, inner, kind));
     } else {
       // Sem o modelo: lata azul ou caixa vermelha simples.
       if (!this.energyMat) {
@@ -307,12 +315,9 @@ export class LootSystem {
       m.parent = holder;
       meshes.push(m);
     }
-    const ring = MeshBuilder.CreateDisc('lootRing', { radius: 0.55, tessellation: 32 }, this.scene);
+    const ring = instanceOf('anelItem', () => MeshBuilder.CreateDisc('anelItem', { radius: 0.55, tessellation: 32 }, this.scene), this.ringMats[kind === 'shield' ? 2 : 1], root);
     ring.rotation.x = Math.PI / 2;
     ring.position.y = 0.04;
-    ring.parent = root;
-    ring.material = this.ringMats[kind === 'shield' ? 2 : 1];
-    for (const m of [...meshes, ring]) m.isPickable = false;
     const model = { root: holder } as unknown as WeaponModel;
     const amount = kind === 'shield' ? ENERGY_SHIELD : MEDKIT_HEAL;
     this.items.push({ kind, pos, root, meshes: [ring, ...meshes], glowMeshes: [], rarity: kind === 'shield' ? 2 : 1, amount, model, phase: Math.random() * 6, visible: true });
@@ -417,21 +422,16 @@ export class LootSystem {
   spawnAmmo(type: AmmoType, amount: number, pos: Vector3): void {
     const root = new TransformNode(`ammo_${type}`, this.scene);
     root.position.copyFrom(pos);
-    const crate = MeshBuilder.CreateBox('ammoCrate', { width: 0.42, height: 0.26, depth: 0.3 }, this.scene);
-    crate.position.y = 0.13;
-    crate.material = this.crateMat;
-    crate.parent = root;
-    const band = MeshBuilder.CreateBox('ammoBand', { width: 0.44, height: 0.06, depth: 0.32 }, this.scene);
-    band.position.y = 0.17;
-    band.material = this.ammoMats[type];
-    band.parent = root;
-    const lid = MeshBuilder.CreateBox('ammoLid', { width: 0.44, height: 0.03, depth: 0.32 }, this.scene);
-    lid.position.y = 0.27;
-    lid.material = this.crateMat;
-    lid.parent = root;
+    const box = (key: string, w: number, h: number, d: number, mat: StandardMaterial, y: number) => {
+      const m = instanceOf(key, () => MeshBuilder.CreateBox(key, { width: w, height: h, depth: d }, this.scene), mat, root);
+      m.position.y = y;
+      return m;
+    };
+    const crate = box('ammoCrate', 0.42, 0.26, 0.3, this.crateMat, 0.13);
+    const band = box('ammoBand', 0.44, 0.06, 0.32, this.ammoMats[type], 0.17);
+    const lid = box('ammoLid', 0.44, 0.03, 0.32, this.crateMat, 0.27);
     root.rotation.y = Math.random() * Math.PI;
-    for (const m of [crate, band, lid]) m.isPickable = false;
-    this.items.push({ kind: 'ammo', pos, root, meshes: [crate, band, lid], glowMeshes: [band], rarity: 0, ammoType: type, amount, phase: 0, visible: true });
+    this.items.push({ kind: 'ammo', pos, root, meshes: [crate, band, lid], glowMeshes: [], rarity: 0, ammoType: type, amount, phase: 0, visible: true });
   }
 
   /** Larga as armas e a munição de quem foi eliminado. */
@@ -502,8 +502,13 @@ export class LootSystem {
           const near = vis && d < 32 && !it.opened;
           if (near !== !!it.glowOn) {
             it.glowOn = near;
-            if (near) it.sparkles?.start();
-            else it.sparkles?.stop();
+            if (near) {
+              it.sparkles ??= this.chestSparkles(it);
+              it.sparkles.start();
+            } else if (it.sparkles) {
+              it.sparkles.dispose();
+              it.sparkles = undefined;
+            }
             it.meshes[it.meshes.length - 1]?.setEnabled(near);
           }
           continue;

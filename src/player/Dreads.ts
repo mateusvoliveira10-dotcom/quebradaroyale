@@ -1,4 +1,4 @@
-import { Color3, DynamicTexture, Matrix, Mesh, MeshBuilder, Scene, StandardMaterial, Texture, TransformNode, Vector3 } from '@babylonjs/core';
+import { Color3, DynamicTexture, Matrix, Mesh, MeshBuilder, Scene, StandardMaterial, Texture, TransformNode, Vector3, VertexData } from '@babylonjs/core';
 import type { HairId } from '../appearance/Appearance';
 import { Rng } from '../utils/random';
 
@@ -58,8 +58,15 @@ function ropeTexture(scene: Scene, hex: string): DynamicTexture {
 }
 
 // Sem clonar a textura: clone de DynamicTexture nunca fica pronto no Babylon.
+const matCache = new Map<string, StandardMaterial>();
+
+/** Material do dread (um por cor, compartilhado por todos os personagens: um shader só). */
 export function dreadMaterial(scene: Scene, hex: string): StandardMaterial {
+  const key = `${scene.uid}|${hex}`;
+  const hit = matCache.get(key);
+  if (hit && !hit.isFrozen && hit.getScene() === scene) return hit;
   const m = new StandardMaterial(`dreadMat_${hex}`, scene);
+  matCache.set(key, m);
   m.diffuseTexture = ropeTexture(scene, hex);
   m.specularColor = new Color3(0.08, 0.07, 0.06);
   m.specularPower = 12;
@@ -71,7 +78,21 @@ export function dreadMaterial(scene: Scene, hex: string): StandardMaterial {
  * Mechas presas em `mount` (nó da cabeça), a partir dos vértices do couro cabeludo `scalp`
  * (malha com skinning, já criada no personagem). Devolve uma malha só (mechas juntas).
  */
+/**
+ * Geometria das mechas, calculada uma vez: o couro cabeludo e o encaixe da cabeça são iguais
+ * em todos os personagens (mesmo corpo-base), então as outras cópias só reaproveitam.
+ */
+let cachedGeometry: VertexData | null = null;
+
 export function buildDreadStrands(scene: Scene, scalp: Mesh, mount: TransformNode, hex: string): Mesh | null {
+  if (cachedGeometry) {
+    const m = new Mesh('dreads', scene);
+    cachedGeometry.applyToMesh(m);
+    m.parent = mount;
+    m.material = dreadMaterial(scene, hex);
+    m.isPickable = false;
+    return m;
+  }
   scalp.computeWorldMatrix(true);
   mount.computeWorldMatrix(true);
   const raw = scalp.getPositionData(true);
@@ -139,6 +160,7 @@ export function buildDreadStrands(scene: Scene, scalp: Mesh, mount: TransformNod
   const merged = Mesh.MergeMeshes(tubes, true, true);
   if (!merged) return null;
   merged.name = 'dreads';
+  cachedGeometry = VertexData.ExtractFromMesh(merged, true, true);
   merged.parent = mount;
   merged.material = dreadMaterial(scene, hex);
   merged.isPickable = false;

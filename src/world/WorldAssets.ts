@@ -120,7 +120,6 @@ export class WorldAssets {
     for (const id of [
       'saco_lixo', 'pneus', 'barril', 'kit_medico', 'tubarao', 'cone', 'energetico', 'barco', 'arvore1', 'arvore2', 'cristo',
       'mochila_esportiva', 'mochila_esportiva_azul', 'mochila_esportiva_vermelha', 'mochila_tatica',
-      'relogio', 'relogio_azul', 'relogio_preto', 'relogio_vermelho', 'relogio_dourado',
       'fone', 'fone_preto', 'fone_vermelho', 'fone_azul', 'fone_rosa',
     ]) {
       try {

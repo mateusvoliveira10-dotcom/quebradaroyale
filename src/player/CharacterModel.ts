@@ -20,6 +20,7 @@ import { glassesById } from '../customization/glasses';
 import { HAIR_MESH, isDread } from '../customization/hair';
 import { instantiateModel } from '../world/ModelInstance';
 import { buildDreadStrands, DREAD_COLORS, dreadMaterial } from './Dreads';
+import { buildWatch } from './Watch';
 import { WorldAssets } from '../world/WorldAssets';
 import { BACKPACKS, HEADPHONES, WATCHES } from '../appearance/Appearance';
 import { CHAIN_CATALOG } from '../customization/chains';
@@ -42,8 +43,6 @@ interface Fit {
   s: number | [number, number, number];
 }
 // Encaixes medidos no personagem-base (espaços dos adaptadores, ver o construtor).
-// Relógio: a pulseira do modelo dá a volta no punho e o mostrador fica do lado de fora.
-const WATCH_FIT: Fit = { y: -0.205, z: 0.0525, ry: -Math.PI / 2, rz: Math.PI / 2, s: 2.1 };
 // Mochilas: o lado das alças (costas do modelo) virado para o corpo.
 const SPORT_FIT: Fit = { y: 0.12, z: -0.2, ry: Math.PI, s: 0.8 };
 const TACTICAL_FIT: Fit = { y: 0.1, z: -0.19, ry: Math.PI, s: 0.8 };
@@ -638,7 +637,12 @@ export class CharacterModel {
     if (has('pulseiras')) this.beadBracelets();
     if (has('pulseira_ouro')) this.goldBracelet();
     const watch = WATCHES.find((w) => has(w));
-    if (watch) this.glbAccessory(watch, this.wristL, WATCH_FIT, true);
+    if (watch) {
+      for (const m of buildWatch(this.scene, this.wristL, watch)) {
+        this.details.add(m);
+        if (this.building) this.groups[this.building].push(m);
+      }
+    }
     const backpack = BACKPACKS.find((b) => has(b));
     this.backMount.position.z = backpack ? -0.36 : -0.16;
     if (backpack) {

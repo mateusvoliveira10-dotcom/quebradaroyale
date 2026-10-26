@@ -70,6 +70,9 @@ export class Environment {
     this.shadows.normalBias = 0.025;
     this.shadows.darkness = 0.25;
     this.shadows.transparencyShadow = false;
+    // Mapa de sombra refeito a cada 2 quadros: metade do custo (~3 ms por quadro na rua) e
+    // a diferença não aparece (o sol e o cenário não se mexem; só os personagens).
+    this.shadows.getShadowMap()!.refreshRate = 2;
     this.cullShadowCasters();
 
     this.glow = new GlowLayer('glow', scene, { mainTextureRatio: 0.5, blurKernelSize: 32 });

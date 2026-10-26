@@ -59,6 +59,11 @@ const DETAIL_CULL: ReadonlyArray<[RegExp, number]> = [
   [/^(metal|metalDark|rubber|cloth_\d+|product_\d+)$/, 106],
   [/^hq_caixa/, 131],
   [/_body$|^veiculo_/, 141],
+  // Interior das casas (visto só pelas janelas), sombras de contato e pichações: de longe
+  // não aparecem, e na rua eram centenas de lotes desenhados à toa.
+  [/^hq_interior/, 75],
+  [/^contactShadow$/, 106],
+  [/^graffiti$/, 131],
 ];
 
 export interface BatchOptions {

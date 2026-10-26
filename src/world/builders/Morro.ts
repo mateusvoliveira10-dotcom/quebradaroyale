@@ -137,10 +137,12 @@ function buildSummit(b: WorldBuilder, rng: Rng, t2: Rect, base: number): { rect:
   if (cristo) {
     // Cristo (modelo enviado), de braços abertos para o cruzamento central, em pedra.
     const ry = Math.atan2(-sx, -sz);
-    b.model(cristo.model, sx, SUMMIT_TOP, sz, ry, () => m.statue, { collide: false });
-    b.collider(3.6, 5, 3.6, sx, SUMMIT_TOP + 2.5, sz);
-    b.contactShadow(sx, sz, 9, 9, SUMMIT_TOP, 0.9);
-    lootSpots.push(new Vector3(sx + Math.sin(ry) * 6.5, SUMMIT_TOP + 0.05, sz + Math.cos(ry) * 6.5));
+    // 1,6x o modelo (uns 22 m): visto de quase qualquer ponto do mapa.
+    const k = 1.6;
+    b.model(cristo.model, sx, SUMMIT_TOP, sz, ry, () => m.statue, { collide: false, scale: k });
+    b.collider(3.6 * k, 5 * k, 3.6 * k, sx, SUMMIT_TOP + 2.5 * k, sz);
+    b.contactShadow(sx, sz, 9 * k, 9 * k, SUMMIT_TOP, 0.9);
+    lootSpots.push(new Vector3(sx + Math.sin(ry) * 9, SUMMIT_TOP + 0.05, sz + Math.cos(ry) * 9));
   } else if (assets?.statue) {
     const ry = Math.atan2(-sx, -sz);
     b.model(assets.statue, sx, SUMMIT_TOP, sz, ry, (role) => (role === 'pedestal' ? m.statuePedestal : m.statue));

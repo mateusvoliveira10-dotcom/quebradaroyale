@@ -1,4 +1,5 @@
 import {
+  AbstractMesh,
   Color3,
   Color4,
   DynamicTexture,
@@ -31,7 +32,7 @@ export class WeaponEffects {
   private readonly sparks: ParticleSystem[] = [];
   private readonly dust: ParticleSystem[] = [];
   private psIndex = 0;
-  private readonly decals: Mesh[] = [];
+  private readonly decals: AbstractMesh[] = [];
   private decalIndex = 0;
 
   constructor(
@@ -148,9 +149,13 @@ export class WeaponEffects {
     holeMat.specularColor = Color3.Black();
     holeMat.zOffset = -3;
     holeMat.backFaceCulling = false;
+    // Instâncias de um plano só: as 90 marcas de tiro saem numa chamada de desenho.
+    const holeSrc = MeshBuilder.CreatePlane('bulletHoleFonte', { size: 0.14 }, scene);
+    holeSrc.material = holeMat;
+    holeSrc.isPickable = false;
+    holeSrc.isVisible = false;
     for (let i = 0; i < 90; i++) {
-      const dmesh = MeshBuilder.CreatePlane('bulletHole', { size: 0.14 }, scene);
-      dmesh.material = holeMat;
+      const dmesh = holeSrc.createInstance('bulletHole');
       dmesh.isPickable = false;
       dmesh.setEnabled(false);
       this.decals.push(dmesh);
@@ -172,6 +177,7 @@ export class WeaponEffects {
 
   muzzleFlash(pos: Vector3, dir: Vector3, big: boolean): void {
     this.flash.setEnabled(true);
+    this.glowFor = 0.3;
     this.flash.position.copyFrom(pos);
     this.flash.lookAt(pos.add(dir));
     this.flash.rotate(new Vector3(0, 0, 1), Math.random() * Math.PI);
@@ -188,6 +194,7 @@ export class WeaponEffects {
     const len = Vector3.Distance(from, to);
     if (len < 0.5) return;
     t.mesh.setEnabled(true);
+    this.glowFor = 0.3;
     t.mesh.position.copyFrom(from);
     t.mesh.lookAt(to);
     t.mesh.scaling.set(1, 1, len);
@@ -219,7 +226,15 @@ export class WeaponEffects {
     dmesh.scaling.setAll(0.7 + Math.random() * 0.6);
   }
 
+  /** Há clarão ou traçante na tela (a camada de brilho só é desenhada enquanto isso). */
+  get glowing(): boolean {
+    return this.glowFor > 0;
+  }
+
+  private glowFor = 0;
+
   update(dt: number): void {
+    this.glowFor -= dt;
     if (this.flashLife > 0) {
       this.flashLife -= dt;
       this.flashLight.intensity *= 0.6;
