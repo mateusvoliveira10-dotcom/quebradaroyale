@@ -59,6 +59,8 @@ export const CAMERA = {
   /** Altura do ponto mirado acima dos pés do personagem. */
   targetHeight: 1.55,
   crouchTargetHeight: 1.05,
+  /** Deitado: a câmera desce junto (mira rente ao chão). */
+  proneTargetHeight: 0.62,
   sensitivity: 0.0024,
   minBeta: 0.3,
   maxBeta: 1.75,

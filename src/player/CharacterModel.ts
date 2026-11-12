@@ -142,7 +142,7 @@ function capTexture(scene: Scene, part: 'copa' | 'aba', base: string, trim: stri
   return t;
 }
 
-export type AnimMode = 'normal' | 'climb' | 'vault' | 'freefall' | 'parachute' | 'plane' | 'dead';
+export type AnimMode = 'normal' | 'climb' | 'vault' | 'freefall' | 'parachute' | 'plane' | 'swim' | 'dead';
 export type HoldStyle = 'pistol' | 'rifle' | null;
 
 export interface AnimInput {
@@ -151,6 +151,8 @@ export interface AnimInput {
   grounded: boolean;
   verticalSpeed: number;
   crouching: boolean;
+  /** Deitado (rastejando). */
+  prone?: boolean;
   sprinting: boolean;
   mode: AnimMode;
   /** Progresso 0..1 da escalada/vault. */
@@ -274,6 +276,17 @@ export class CharacterModel {
   /** Pesos das poses aéreas (queda livre em "caixa" e pendurado no paraquedas). */
   private freefallW = 0;
   private chuteW = 0;
+  /** Pesos das poses de corpo deitado (nado e rastejar) e o ciclo de braçada/rastejada. */
+  private swimW = 0;
+  private lastSpeed = 0;
+  private proneW = 0;
+  private swimMove = 0;
+  private crawlPhase = 0;
+  private swimPhase = 0;
+  /** Altura do pivô do corpo (quadril): baixa ao deitar. */
+  private pivotY = 0.95;
+  /** Arco das costas deitado mirando (peito levantado sobre os cotovelos). */
+  private proneArch = 0;
   private skipCount = 0;
   private readonly pitchAxis: Vector3[];
   /** Eixo vertical do personagem no espaço local de cada osso em repouso. */
@@ -747,6 +760,7 @@ export class CharacterModel {
    * (estilo "dad cap" de grife esportiva) ou reta (snapback); `back` gira o boné para trás.
    */
   private buildCap(style: 'curva' | 'reta', back: boolean, jersey: { base: string; trim: string }): void {
+    if (this.capModel(style, back, jersey)) return;
     const s2 = this.scene;
     const reta = style === 'reta';
     const crownTex = capTexture(s2, 'copa', jersey.base, jersey.trim, false);
@@ -799,6 +813,42 @@ export class CharacterModel {
     // Borda da aba (espessura).
     const edge = MeshBuilder.CreateTube('capBrimEdge', { path: rows[4].map((p) => p.add(new Vector3(0, -0.0035, 0))), radius: 0.0036, tessellation: 6 }, s2);
     this.add(edge, brim, rootMesh, { rx: -0.1 }, false, true);
+  }
+
+  /**
+   * Boné modelado (tools/blender/cap.py): copa de 6 gomos com costuras, botão, ilhoses,
+   * carneira, fecho snapback e aba com pespontos, nas cores da camisa. Devolve false se o
+   * modelo não carregou (aí vale o boné antigo, de formas simples).
+   */
+  private capModel(style: 'curva' | 'reta', back: boolean, jersey: { base: string; trim: string }): boolean {
+    const p = WorldAssets.current?.texturedProps.get(style === 'curva' ? 'bone_curvo' : 'bone_reto');
+    if (!p) return false;
+    const s2 = this.scene;
+    const reta = style === 'reta';
+    const key = `${jersey.base}_${jersey.trim}`;
+    const mats: Record<string, StandardMaterial> = {
+      copa: this.mat(`bone_copa_${key}`, '#ffffff', { spec: 0.08, power: 16, tex: capTexture(s2, 'copa', jersey.base, jersey.trim, false) }),
+      aba: this.mat(`bone_aba_${key}`, '#ffffff', { spec: 0.1, power: 18, tex: capTexture(s2, 'aba', jersey.base, jersey.trim, true) }),
+      aba_baixo: this.mat(reta ? 'bone_sob_reta' : 'bone_sob_curva', reta ? '#2b3a2c' : '#3a3c42', { spec: 0.04 }),
+      costura: this.mat(`bone_linha_${jersey.trim}`, jersey.trim, { spec: 0.15 }),
+      botao: this.mat(`bone_botao_${jersey.base}`, jersey.base, { spec: 0.2 }),
+      faixa: this.mat('bone_carneira', '#1e2024', { spec: 0.05 }),
+      fecho: this.mat('bone_fecho', '#121214', { spec: 0.45, power: 60 }),
+      emblema: this.mat(`bone_emblema_${key}`, '#ffffff', { spec: 0.3, tex: emblemTexture(s2, jersey.trim, jersey.base) }),
+    };
+    // Mesmo encaixe do boné antigo: base da copa um pouco acima do topo da cabeça,
+    // inclinado para trás; para trás = girado meia volta.
+    const root = this.add(new Mesh('boneRaiz', s2), mats.copa, this.headMount, { y: 0.158, z: back ? 0.004 : -0.006, ry: back ? Math.PI : 0 }, false);
+    const tilt = new Mesh('boneInclinacao', s2);
+    tilt.parent = root;
+    tilt.rotation.x = back ? -0.06 : -0.17;
+    if (this.building) this.groups[this.building].push(tilt);
+    for (const m of instantiateModel(p.model, (role) => mats[role] ?? mats.copa, tilt, 'bone')) {
+      m.isPickable = false;
+      m.receiveShadows = true;
+      if (this.building) this.groups[this.building].push(m);
+    }
+    return true;
   }
 
   private mat(name: string, hex: string, o: MatOpts = {}): StandardMaterial {
@@ -872,6 +922,7 @@ export class CharacterModel {
 
   animate(dt: number, a: AnimInput): void {
     this.time += dt;
+    this.lastSpeed = a.speed;
     const t = this.targets;
     for (const c of BASE_CLIPS) t[c] = 0;
     let sharp = 12;
@@ -895,6 +946,14 @@ export class CharacterModel {
         t.jump = 1;
         this.times.jump = JUMP_TAKEOFF;
         sharp = 6;
+      } else if (a.mode === 'swim') {
+        // Nado: parado, quase em pé batendo pernas; nadando, corpo deitado na superfície.
+        const k = clamp(a.speed / 3.6, 0, 1);
+        this.swimMove += (k - this.swimMove) * damp(3, dt);
+        t.idle = 1;
+        bodyPitch = 0.22 + this.swimMove * 1.12;
+        sharp = 6;
+        this.swimPhase = (this.swimPhase + dt * (0.55 + this.swimMove * 0.75)) % 1;
       } else if (a.mode === 'climb') {
         t.climb = 1;
         this.times.climb = a.traversalT * this.asset.clips.climb.duration * 0.5;
@@ -908,10 +967,27 @@ export class CharacterModel {
         const vy = a.verticalSpeed;
         this.times.jump = vy > 0 ? JUMP_APEX - (JUMP_APEX - JUMP_TAKEOFF) * clamp(vy / 8.4, 0, 1) : JUMP_APEX + (JUMP_FALL - JUMP_APEX) * clamp(-vy / 8, 0, 1);
         sharp = 10;
+      } else if (a.prone) {
+        // Deitado: corpo no chão; os braços e as pernas (IK) fazem a rastejada.
+        t.idle = 1;
+        bodyPitch = 1.5;
+        sharp = 8;
+        if (a.speed > 0.15) {
+          const prev = this.crawlPhase;
+          this.crawlPhase = (this.crawlPhase + (dt * a.speed) / 0.9) % 1;
+          if (Math.floor(prev * 2) !== Math.floor(this.crawlPhase * 2)) this.onFootstep?.(false);
+        }
       } else {
         this.groundTargets(dt, a);
       }
     }
+    const proneNow = a.mode === 'normal' && a.grounded && !!a.prone;
+    this.proneW += ((proneNow ? 1 : 0) - this.proneW) * damp(7, dt);
+    this.swimW += ((a.mode === 'swim' ? 1 : 0) - this.swimW) * damp(5, dt);
+    if (this.proneW < 1e-3) this.proneW = 0;
+    if (this.swimW < 1e-3) this.swimW = 0;
+    this.pivotY += ((proneNow ? 0.2 : 0.95) - this.pivotY) * damp(7, dt);
+    this.proneArch += ((proneNow && holding ? 1 : 0) - this.proneArch) * damp(8, dt);
     if (this.landImpact > 0 && a.mode !== 'dead') {
       // Aterrissagem: mistura rápida com a pose agachada.
       const k = this.landImpact;
@@ -1153,6 +1229,21 @@ export class CharacterModel {
 
     this.pivot.rotation.x = this.bodyPitch;
     this.pivot.rotation.z = this.bodyRoll;
+    // O pivô fica no quadril; deitado, desce para o corpo encostar no chão (o offset compensa
+    // para os pés continuarem na origem com o corpo em pé).
+    this.pivot.position.y = this.pivotY;
+    this.offset.position.y = -0.95;
+
+    // Deitado mirando: o peito levanta sobre os cotovelos (as costas arqueiam) para a arma
+    // ficar na horizontal em vez de apontar para o chão.
+    if (this.proneArch > 1e-3) {
+      for (const [bone, share] of [[this.spine0, 0.3], [this.spine1, 0.35], [this.spine2, 0.35]] as const) {
+        if (bone < 0) continue;
+        Quaternion.RotationAxisToRef(this.pitchAxis[bone], -1.15 * share * this.proneArch, tmpQ2);
+        const q = bones[bone].rotationQuaternion!;
+        q.multiplyToRef(tmpQ2, q);
+      }
+    }
 
     // Mão de apoio na arma (o clipe de mira deixa a mão esquerda longe do guarda-mão).
     // Só de perto (LOD 0): a 20 m+ a mão de apoio solta não aparece, e a IK custava ~2 ms
@@ -1160,6 +1251,57 @@ export class CharacterModel {
     const ik = this.supportGrip && reloadT < 0 && this.lodLevel === 0 ? this.upperWeight : 0;
     if (ik > 0.01) this.solveSupportArm(this.supportGrip!, ik);
     if (this.freefallW > 0.01 || this.chuteW > 0.01) this.applyAirPose();
+    if (this.swimW > 0.01 || this.proneW > 0.01) this.applyLyingPose(ik > 0.01 || this.upperWeight > 0.3);
+  }
+
+  /**
+   * Nado e rastejar por IK (o GLB não tem esses clipes), com o corpo em pé no espaço do
+   * esqueleto (glTF: +X esquerda, +Y cima, +Z frente) — o pivô deita o corpo.
+   *   nado parado: mãos remando à frente do peito, pernas pedalando devagar;
+   *   nado crawl: braços alternados (estica à frente da cabeça e puxa até o quadril), pernas
+   *     batendo;
+   *   rastejar: cotovelos no chão à frente da cabeça puxando o corpo, joelhos alternados.
+   * Com arma na mão, deitado, os braços ficam com a camada de mira (só as pernas mexem).
+   */
+  private applyLyingPose(armed: boolean): void {
+    const n = this.inst.nodes;
+    const esqInv = Matrix.Invert(this.worldOf(this.hipsNode.parent as TransformNode));
+    const sw = this.swimW;
+    const pw = this.proneW;
+    const w = Math.min(1, sw + pw);
+    const ks = sw / Math.max(w, 1e-3);
+    const kp = pw / Math.max(w, 1e-3);
+    const m = this.swimMove;
+    for (const side of [1, -1]) {
+      const L = side > 0 ? 'Left' : 'Right';
+      // ---- braços
+      const sp = (this.swimPhase + (side > 0 ? 0 : 0.5)) % 1;
+      const ang = sp * Math.PI * 2;
+      // crawl: estica à frente (alto) e puxa por baixo do corpo até o quadril
+      const crawlArm = new Vector3(side * (0.22 + 0.06 * Math.cos(ang)), 1.35 + 0.55 * Math.cos(ang), 0.22 + 0.32 * Math.max(0, Math.sin(ang)));
+      // parado: remadas curtas na frente do peito
+      const scull = new Vector3(side * (0.32 + 0.12 * Math.sin(ang)), 1.2, 0.38 + 0.05 * Math.cos(ang));
+      const swimHand = Vector3.Lerp(scull, crawlArm, m);
+      const cp = (this.crawlPhase + (side > 0 ? 0 : 0.5)) % 1;
+      const ca = cp * Math.PI * 2;
+      const proneHand = new Vector3(side * 0.24, 1.62 + 0.12 * Math.sin(ca), 0.3 + 0.04 * Math.cos(ca));
+      if (!(armed && kp > 0.5)) {
+        const hand = swimHand.scale(ks).add(proneHand.scale(kp));
+        const palm = n.get(side > 0 ? 'socket_weapon_L' : 'socket_weapon_R')!;
+        const cur = this.relPos(palm, esqInv);
+        this.twoBone(n.get(L + "Arm")!, n.get(L + "ForeArm")!, palm, Vector3.Lerp(cur, hand, w), esqInv);
+      }
+      // ---- pernas
+      const kick = Math.sin(this.time * (6 + m * 5) + (side > 0 ? 0 : Math.PI));
+      const swimFoot = new Vector3(side * 0.16, 0.08 + 0.05 * (1 - m), -0.04 + kick * (0.08 + 0.06 * m));
+      const knee = Math.max(0, Math.sin(ca)) * Math.min(1, this.lastSpeed / 0.6);
+      const proneFoot = new Vector3(side * (0.2 + 0.12 * knee), 0.06 + 0.26 * knee, -0.12 - 0.05 * knee);
+      const foot = swimFoot.scale(ks).add(proneFoot.scale(kp));
+      const footNode = n.get(L + "Foot");
+      if (!footNode) continue;
+      const curF = this.relPos(footNode, esqInv);
+      this.twoBone(n.get(L + "UpLeg")!, n.get(L + "Leg")!, footNode, Vector3.Lerp(curF, foot, w), esqInv);
+    }
   }
 
   /**

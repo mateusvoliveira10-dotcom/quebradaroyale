@@ -34,6 +34,11 @@ export class WeaponEffects {
   private psIndex = 0;
   private readonly decals: AbstractMesh[] = [];
   private decalIndex = 0;
+  /** Água: gotas (partículas) e anéis de onda que crescem e somem. */
+  private readonly drops: ParticleSystem[] = [];
+  private readonly rings: Array<{ mesh: AbstractMesh; life: number; max: number; size: number }> = [];
+  private dropIndex = 0;
+  private ringIndex = 0;
 
   constructor(
     private readonly scene: Scene,
@@ -135,6 +140,55 @@ export class WeaponEffects {
       this.dust.push(d);
     }
 
+    // Respingos d'água: gotas brancas/azuladas jogadas para cima e anéis na superfície.
+    for (let i = 0; i < 4; i++) {
+      const s = new ParticleSystem('respingo', 160, scene);
+      s.particleTexture = sparkTex;
+      s.emitter = Vector3.Zero();
+      s.minEmitBox = new Vector3(-0.25, 0, -0.25);
+      s.maxEmitBox = new Vector3(0.25, 0, 0.25);
+      s.color1 = new Color4(0.92, 0.97, 1, 0.9);
+      s.color2 = new Color4(0.7, 0.85, 0.95, 0.75);
+      s.colorDead = new Color4(0.8, 0.9, 1, 0);
+      s.minSize = 0.05;
+      s.maxSize = 0.16;
+      s.minLifeTime = 0.35;
+      s.maxLifeTime = 0.8;
+      s.minEmitPower = 1.5;
+      s.maxEmitPower = 4.5;
+      s.direction1 = new Vector3(-0.5, 1, -0.5);
+      s.direction2 = new Vector3(0.5, 1.6, 0.5);
+      s.emitRate = 0;
+      s.gravity = new Vector3(0, -9.8, 0);
+      s.blendMode = ParticleSystem.BLENDMODE_STANDARD;
+      s.start();
+      this.drops.push(s);
+    }
+    const ringTex = this.radialTexture('ondaTex', [
+      [0, 'rgba(255,255,255,0)'],
+      [0.62, 'rgba(255,255,255,0)'],
+      [0.8, 'rgba(255,255,255,0.75)'],
+      [0.9, 'rgba(255,255,255,0.35)'],
+      [1, 'rgba(255,255,255,0)'],
+    ]);
+    const ringMat = new StandardMaterial('ondaMat', scene);
+    ringMat.diffuseColor = new Color3(0.9, 0.97, 1);
+    ringMat.emissiveColor = new Color3(0.55, 0.62, 0.66);
+    ringMat.opacityTexture = ringTex;
+    ringMat.specularColor = Color3.Black();
+    ringMat.backFaceCulling = false;
+    ringMat.zOffset = -2;
+    const ringSrc = MeshBuilder.CreateGround('ondaFonte', { width: 1, height: 1 }, scene);
+    ringSrc.material = ringMat;
+    ringSrc.isPickable = false;
+    ringSrc.isVisible = false;
+    for (let i = 0; i < 16; i++) {
+      const r = ringSrc.createInstance('onda');
+      r.isPickable = false;
+      r.setEnabled(false);
+      this.rings.push({ mesh: r, life: 0, max: 1, size: 1 });
+    }
+
     // Marcas de bala.
     const holeTex = this.radialTexture('holeTex', [
       [0, 'rgba(10,8,6,0.95)'],
@@ -226,6 +280,35 @@ export class WeaponEffects {
     dmesh.scaling.setAll(0.7 + Math.random() * 0.6);
   }
 
+  /**
+   * Respingo na superfície da água em `at` (y = nível): gotas e um anel de onda. `strength`
+   * 0..1 (bala ≈ 0,25; braçada ≈ 0,4; mergulho de cima ≈ 1).
+   */
+  splash(at: Vector3, strength: number): void {
+    const k = Math.max(0.1, Math.min(1, strength));
+    const s = this.drops[this.dropIndex];
+    this.dropIndex = (this.dropIndex + 1) % this.drops.length;
+    s.emitter = at.add(new Vector3(0, 0.03, 0));
+    s.minEmitPower = 1 + 2.5 * k;
+    s.maxEmitPower = 2.5 + 5 * k;
+    s.manualEmitCount = Math.round(8 + 60 * k);
+    this.ripple(at, 0.6 + 2.6 * k, 0.7 + 0.6 * k);
+    if (k > 0.6) this.ripple(at, 0.4 + 1.8 * k, 1.1 + 0.4 * k);
+  }
+
+  /** Só o anel de onda (nadando: um a cada braçada). */
+  ripple(at: Vector3, size: number, life = 0.9): void {
+    const r = this.rings[this.ringIndex];
+    this.ringIndex = (this.ringIndex + 1) % this.rings.length;
+    r.mesh.setEnabled(true);
+    r.mesh.position.set(at.x, at.y + 0.04, at.z);
+    r.life = life;
+    r.max = life;
+    r.size = size;
+    r.mesh.scaling.setAll(0.2);
+    r.mesh.visibility = 1;
+  }
+
   /** Há clarão ou traçante na tela (a camada de brilho só é desenhada enquanto isso). */
   get glowing(): boolean {
     return this.glowFor > 0;
@@ -242,6 +325,15 @@ export class WeaponEffects {
         this.flash.setEnabled(false);
         this.flashLight.intensity = 0;
       }
+    }
+    for (const r of this.rings) {
+      if (r.life <= 0) continue;
+      r.life -= dt;
+      const u = 1 - Math.max(0, r.life) / r.max;
+      const sc = 0.2 + r.size * (1 - (1 - u) * (1 - u));
+      r.mesh.scaling.set(sc, 1, sc);
+      r.mesh.visibility = 1 - u;
+      if (r.life <= 0) r.mesh.setEnabled(false);
     }
     for (const t of this.tracers) {
       if (t.life <= 0) continue;

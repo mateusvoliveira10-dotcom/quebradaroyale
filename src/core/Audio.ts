@@ -1,5 +1,7 @@
 import { SoundKind } from '../weapons/WeaponDefs';
 
+export type ImpactSurface = 'concreto' | 'chao' | 'metal' | 'madeira' | 'agua' | 'corpo';
+
 type LoopName = 'plane' | 'wind' | 'chest';
 
 interface Loop {
@@ -19,6 +21,8 @@ export class GameAudio {
   private readonly loops = new Map<LoopName, Loop>();
   /** Multiplicador temporário (sons distantes). */
   private mul = 1;
+  /** Abafamento temporário (0 = limpo, 1 = bem longe): corta os agudos dos sons distantes. */
+  private muffle = 0;
   private masterVolume = 0.55;
   /** Entrada do eco de rua (reverb curto gerado): só os tiros mandam som para ele. */
   private reverb: GainNode | null = null;
@@ -86,7 +90,7 @@ export class GameAudio {
     const g = ctx.createGain();
     g.gain.setValueAtTime(Math.max(0.0002, vol * this.mul), t);
     g.gain.exponentialRampToValueAtTime(0.001, t + dur * decay + 0.01);
-    src.connect(f).connect(g).connect(master);
+    src.connect(f).connect(g).connect(this.muffled(ctx, master));
     if (send > 0 && this.reverb) {
       const s = ctx.createGain();
       s.gain.value = send;
@@ -108,7 +112,7 @@ export class GameAudio {
     g.gain.setValueAtTime(0.0001, t);
     g.gain.exponentialRampToValueAtTime(Math.max(0.0002, vol * this.mul), t + 0.008);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g).connect(master);
+    o.connect(g).connect(this.muffled(ctx, master));
     if (send > 0 && this.reverb) {
       const s = ctx.createGain();
       s.gain.value = send;
@@ -116,6 +120,17 @@ export class GameAudio {
     }
     o.start(t);
     o.stop(t + dur + 0.05);
+  }
+
+  /** Som distante: passa por um passa-baixa (o estalo some, sobra o "bum" e o eco). */
+  private muffled(ctx: AudioContext, dest: AudioNode): AudioNode {
+    if (this.muffle <= 0.02) return dest;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 9000 * Math.pow(0.07, this.muffle);
+    lp.Q.value = 0.5;
+    lp.connect(dest);
+    return lp;
   }
 
   // ------------------------------------------------------------ efeitos
@@ -126,10 +141,61 @@ export class GameAudio {
     if (this.master) this.master.gain.value = this.masterVolume;
   }
 
-  shot(kind: SoundKind, volume = 1): void {
+  /** Tiro: `muffle` 0..1 pela distância (longe soa abafado, não só mais baixo). */
+  shot(kind: SoundKind, volume = 1, muffle = 0): void {
     this.mul = volume;
+    this.muffle = muffle;
     this.shotInner(kind);
     this.mul = 1;
+    this.muffle = 0;
+  }
+
+  /**
+   * Bala acertando uma superfície (perto de quem ouve): concreto/tijolo (estalo seco com
+   * farelo), chão (baque abafado), metal (ping que ressoa), madeira (toc oco), água (plop)
+   * e corpo (impacto surdo).
+   */
+  impact(surface: ImpactSurface, volume = 1): void {
+    if (volume < 0.03) return;
+    this.mul = volume;
+    const v = 0.9 + Math.random() * 0.2;
+    switch (surface) {
+      case 'metal':
+        this.noiseBurst(0.03, 0.3, 'highpass', 4200 * v, 0.8);
+        this.tone(2300 * v, 0.28, 0.14, 'sine', 0, 2100 * v);
+        this.tone(3700 * v, 0.18, 0.07, 'sine', 0.002, 3500 * v);
+        break;
+      case 'madeira':
+        this.noiseBurst(0.06, 0.35, 'bandpass', 700 * v, 2.5, 0, 0.7);
+        this.tone(240 * v, 0.07, 0.18, 'triangle', 0, 160);
+        break;
+      case 'agua':
+        this.noiseBurst(0.18, 0.28, 'bandpass', 1300 * v, 1.4, 0, 0.8, 0, 0.45);
+        this.tone(900 * v, 0.09, 0.08, 'sine', 0.01, 1900 * v);
+        break;
+      case 'chao':
+        this.noiseBurst(0.09, 0.3, 'lowpass', 900 * v, 0.7, 0, 0.8);
+        this.noiseBurst(0.05, 0.14, 'highpass', 2500 * v, 0.7, 0.01, 0.6);
+        break;
+      case 'corpo':
+        this.noiseBurst(0.07, 0.32, 'lowpass', 500 * v, 0.8, 0, 0.8);
+        this.tone(110 * v, 0.07, 0.2, 'sine', 0, 70);
+        break;
+      default:
+        // concreto, tijolo, reboco
+        this.noiseBurst(0.04, 0.32, 'bandpass', 2600 * v, 1.6, 0, 0.6);
+        this.noiseBurst(0.12, 0.12, 'highpass', 3800 * v, 0.6, 0.015, 0.9);
+        this.tone(420 * v, 0.04, 0.08, 'square', 0, 260);
+    }
+    this.mul = 1;
+  }
+
+  /** Trocar de arma: pano/coldre e a trava da arma nova (cada tipo com o seu clique). */
+  equip(kind: SoundKind): void {
+    this.noiseBurst(0.12, 0.16, 'bandpass', 900, 0.8, 0, 0.9, 0, 0.6);
+    const f = kind === 'pistol' ? 3400 : kind === 'sniper' ? 2100 : kind === 'shotgun' ? 1700 : 2700;
+    this.clack(0.12, 0.2, f);
+    if (kind === 'shotgun') this.clack(0.2, 0.16, 1500);
   }
 
   /**
@@ -199,12 +265,96 @@ export class GameAudio {
     this.tone(1800, 0.03, 0.15, 'square');
   }
 
-  reload(duration: number): void {
-    this.noiseBurst(0.06, 0.35, 'bandpass', 2500, 4, 0.05);
-    this.tone(900, 0.04, 0.12, 'square', 0.06);
-    this.noiseBurst(0.08, 0.4, 'bandpass', 1800, 4, duration * 0.55);
-    this.noiseBurst(0.1, 0.45, 'bandpass', 1400, 3, duration * 0.9);
-    this.tone(600, 0.05, 0.12, 'square', duration * 0.9);
+  /**
+   * Recarga de cada arma, com os sons no tempo da animação (frações da duração): pistola
+   * (pente sai, pente entra, ferrolho), submetralhadora e fuzil (pente sai, pente bate,
+   * alavanca de manejo), escopeta (cartucho a cartucho e o pump) e sniper (ferrolho abre,
+   * munição, ferrolho fecha).
+   */
+  reload(duration: number, kind: SoundKind = 'rifle'): void {
+    const D = duration;
+    const magOut = (at: number, f: number) => {
+      this.noiseBurst(0.07, 0.32, 'bandpass', f, 4, at, 0.6);
+      this.tone(f * 0.35, 0.05, 0.1, 'square', at + 0.01, f * 0.25);
+    };
+    const magIn = (at: number, f: number) => {
+      this.noiseBurst(0.05, 0.45, 'bandpass', f, 3, at, 0.5);
+      this.tone(f * 0.3, 0.04, 0.14, 'square', at, f * 0.22);
+      this.noiseBurst(0.04, 0.3, 'highpass', 3000, 1, at + 0.03, 0.5);
+    };
+    switch (kind) {
+      case 'pistol':
+        magOut(0.1 * D, 2400);
+        magIn(0.55 * D, 2000);
+        this.clack(0.85 * D, 0.3, 3200);
+        break;
+      case 'smg':
+        magOut(0.12 * D, 2600);
+        magIn(0.52 * D, 2200);
+        this.clack(0.8 * D, 0.22, 3400);
+        this.clack(0.88 * D, 0.2, 3000);
+        break;
+      case 'shotgun': {
+        const shells = 4;
+        for (let i = 0; i < shells; i++) {
+          const at = (0.12 + (i * 0.6) / shells) * D;
+          this.noiseBurst(0.04, 0.3, 'bandpass', 1500, 3, at, 0.5);
+          this.tone(520, 0.05, 0.12, 'triangle', at + 0.01, 380);
+        }
+        this.clack(0.82 * D, 0.26, 1800);
+        this.clack(0.92 * D, 0.3, 2200);
+        break;
+      }
+      case 'sniper':
+        this.clack(0.08 * D, 0.26, 2000);
+        this.clack(0.18 * D, 0.24, 2400);
+        magOut(0.3 * D, 2100);
+        magIn(0.6 * D, 1800);
+        this.clack(0.82 * D, 0.28, 2600);
+        this.clack(0.9 * D, 0.3, 2000);
+        break;
+      default:
+        magOut(0.12 * D, 2300);
+        magIn(0.55 * D, 1900);
+        this.clack(0.84 * D, 0.28, 2800);
+    }
+  }
+
+  /** Água: entrar (respingo proporcional à queda), braçada e sair. */
+  splash(strength: number): void {
+    const s = Math.max(0.15, Math.min(1, strength));
+    this.noiseBurst(0.35 + s * 0.5, 0.3 + s * 0.4, 'lowpass', 1800 + s * 1500, 0.7, 0, 0.9, 0.1, 0.35);
+    this.noiseBurst(0.25, 0.18 * s, 'bandpass', 3200, 1.2, 0.05, 0.8);
+    this.tone(260, 0.2, 0.1 * s, 'sine', 0.02, 120);
+  }
+
+  stroke(strength: number): void {
+    this.noiseBurst(0.22, 0.08 + strength * 0.08, 'bandpass', 1100 + Math.random() * 500, 1.1, 0, 0.85, 0, 0.5);
+  }
+
+  /** Porta de madeira abrindo/fechando (dobradiça + batida). */
+  door(open: boolean): void {
+    this.tone(open ? 520 : 460, 0.28, 0.04, 'sawtooth', 0, open ? 640 : 380);
+    this.noiseBurst(0.08, 0.12, 'bandpass', 900, 2, 0.02, 0.7);
+    if (!open) {
+      this.noiseBurst(0.12, 0.4, 'lowpass', 600, 0.8, 0.32, 0.8);
+      this.tone(120, 0.1, 0.22, 'sine', 0.32, 70);
+    }
+  }
+
+  /** Alerta da zona: dois toques graves (a tempestade vai fechar / começou a fechar). */
+  zoneAlert(closing: boolean): void {
+    const f = closing ? 330 : 440;
+    for (let i = 0; i < (closing ? 3 : 2); i++) {
+      this.tone(f, 0.32, 0.22, 'triangle', i * 0.42, f * 0.98);
+      this.tone(f * 1.5, 0.32, 0.1, 'sine', i * 0.42);
+    }
+  }
+
+  /** Dano da tempestade (zumbido elétrico curto). */
+  stormTick(): void {
+    this.tone(70, 0.18, 0.2, 'sawtooth', 0, 55);
+    this.noiseBurst(0.14, 0.16, 'bandpass', 2400, 2, 0, 0.7);
   }
 
   pickup(rarity = 0): void {
@@ -299,30 +449,45 @@ export class GameAudio {
     const { ctx, master, noise } = this;
     if (!ctx || !master || !noise) return;
 
-    // Motor do avião: dente de serra grave + ruído filtrado.
+    // Turbinas do jato: rugido grave de ar (ruído passa-baixa), chiado do fan (ruído médio) e
+    // o assobio da turbina (dois tons agudos levemente desafinados, que batem entre si).
     const planeGain = ctx.createGain();
     planeGain.gain.value = 0;
     planeGain.connect(master);
-    const lp = ctx.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.value = 420;
-    lp.connect(planeGain);
-    for (const f of [52, 78, 104]) {
+    const roar = ctx.createBiquadFilter();
+    roar.type = 'lowpass';
+    roar.frequency.value = 260;
+    roar.Q.value = 0.4;
+    roar.connect(planeGain);
+    const rn = ctx.createBufferSource();
+    rn.buffer = noise;
+    rn.loop = true;
+    rn.playbackRate.value = 0.6;
+    const rng = ctx.createGain();
+    rng.gain.value = 0.55;
+    rn.connect(rng).connect(roar);
+    rn.start();
+    const fan = ctx.createBiquadFilter();
+    fan.type = 'bandpass';
+    fan.frequency.value = 1400;
+    fan.Q.value = 0.7;
+    fan.connect(planeGain);
+    const fn = ctx.createBufferSource();
+    fn.buffer = noise;
+    fn.loop = true;
+    const fng = ctx.createGain();
+    fng.gain.value = 0.12;
+    fn.connect(fng).connect(fan);
+    fn.start(0, 0.4);
+    for (const [freq, vol] of [[2350, 0.012], [2363, 0.012], [118, 0.05]] as const) {
       const o = ctx.createOscillator();
-      o.type = 'sawtooth';
-      o.frequency.value = f;
+      o.type = freq > 1000 ? 'sine' : 'triangle';
+      o.frequency.value = freq;
       const g = ctx.createGain();
-      g.gain.value = 0.12;
-      o.connect(g).connect(lp);
+      g.gain.value = vol;
+      o.connect(g).connect(planeGain);
       o.start();
     }
-    const pn = ctx.createBufferSource();
-    pn.buffer = noise;
-    pn.loop = true;
-    const png = ctx.createGain();
-    png.gain.value = 0.25;
-    pn.connect(png).connect(lp);
-    pn.start();
     this.loops.set('plane', { gain: planeGain, target: 0 });
 
     // Vento da queda livre.

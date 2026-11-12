@@ -82,8 +82,105 @@ export class Hud {
   private vignetteTimer = 0;
   private lastLoadoutKey = '';
   private lastHealth = -1;
+  /** Fotos das armas (renderizadas na carga) para os espaços do inventário. */
+  photos: Partial<Record<string, string>> = {};
+  private readonly compassStrip = el('compass-strip');
+  private readonly compassDeg = el('compass-deg');
+  private readonly coords = el('coords');
+  private readonly compassItems: Array<{ e: HTMLElement; deg: number }> = [];
+  private zoneDot: HTMLElement | null = null;
+  private readonly stormBanner = el('storm-banner');
+  private readonly stormOverlay = el('storm-overlay');
+  private bannerTimer = 0;
+  private lastCompassKey = '';
 
-  constructor(private readonly input: Input) {}
+  constructor(private readonly input: Input) {
+    this.buildCompass();
+  }
+
+  /** Marcas da bússola: pontos cardeais e colaterais, números a cada 15° e tracinhos a cada 5°. */
+  private buildCompass(): void {
+    const names: Record<number, string> = { 0: 'N', 45: 'NE', 90: 'L', 135: 'SE', 180: 'S', 225: 'SO', 270: 'O', 315: 'NO' };
+    for (let d = 0; d < 360; d += 5) {
+      const tk = document.createElement('i');
+      tk.className = 'cmp-t' + (d % 15 === 0 ? ' cmp-big' : '');
+      this.compassStrip.appendChild(tk);
+      this.compassItems.push({ e: tk, deg: d });
+      if (d % 15 === 0) {
+        const lb = document.createElement('span');
+        const name = names[d];
+        lb.className = 'cmp-l ' + (name ? 'cmp-card' + (d === 0 ? ' cmp-north' : '') : 'cmp-num');
+        lb.textContent = name ?? String(d);
+        this.compassStrip.appendChild(lb);
+        this.compassItems.push({ e: lb, deg: d });
+      }
+    }
+    this.zoneDot = document.createElement('i');
+    this.zoneDot.className = 'zone-dot';
+    this.zoneDot.style.display = 'none';
+    this.compassStrip.appendChild(this.zoneDot);
+  }
+
+  /**
+   * Bússola: `heading` em graus (0 = norte/+Z, 90 = leste/+X), posição do jogador em metros e,
+   * se houver, a direção (graus) do centro da próxima zona — marcada em roxo na fita.
+   */
+  setCompass(heading: number, x: number, z: number, zoneHeading: number | null): void {
+    const h = ((heading % 360) + 360) % 360;
+    const key = `${h.toFixed(1)}|${Math.round(x)}|${Math.round(z)}|${zoneHeading === null ? '-' : zoneHeading.toFixed(0)}`;
+    if (key === this.lastCompassKey) return;
+    this.lastCompassKey = key;
+    // A fita mostra ±95° em volta da direção atual.
+    const w = this.compassStrip.clientWidth || 480;
+    const pxPerDeg = w / 190;
+    const place = (e: HTMLElement, deg: number) => {
+      let d = deg - h;
+      d = ((d + 540) % 360) - 180;
+      if (Math.abs(d) > 98) {
+        e.style.display = 'none';
+        return;
+      }
+      e.style.display = '';
+      e.style.left = `${w / 2 + d * pxPerDeg}px`;
+    };
+    for (const it of this.compassItems) place(it.e, it.deg);
+    if (this.zoneDot) {
+      if (zoneHeading === null) this.zoneDot.style.display = 'none';
+      else place(this.zoneDot, zoneHeading);
+    }
+    this.compassDeg.textContent = String(Math.round(h) % 360);
+    this.coords.textContent = `X ${Math.round(x)} · Z ${Math.round(z)}`;
+  }
+
+  setKills(n: number): void {
+    el('kill-count').textContent = String(n);
+  }
+
+  /** Relógio da zona debaixo do minimapa: estado 'wait' (parada), 'closing' ou 'outside'. */
+  setZoneStat(text: string, state: 'wait' | 'closing' | 'outside'): void {
+    const z = el('zone-stat');
+    (z.querySelector('b') as HTMLElement).textContent = text;
+    z.classList.toggle('closing', state === 'closing');
+    z.classList.toggle('outside', state === 'outside');
+  }
+
+  /** Aviso grande da tempestade (some sozinho depois de `seconds`; 0 = fica até trocar). */
+  stormAlert(title: string | null, sub = '', danger = false, seconds = 4): void {
+    this.stormBanner.classList.toggle('hidden', !title);
+    if (!title) {
+      this.bannerTimer = 0;
+      return;
+    }
+    el('storm-title').textContent = title;
+    el('storm-sub').textContent = sub;
+    this.stormBanner.classList.toggle('danger', danger);
+    this.bannerTimer = seconds > 0 ? seconds : Infinity;
+  }
+
+  /** Tela roxa nas bordas enquanto está dentro da tempestade. */
+  setStorm(on: boolean): void {
+    this.stormOverlay.classList.toggle('on', on);
+  }
 
   show(on: boolean): void {
     this.root.classList.toggle('hidden', !on);
@@ -97,7 +194,12 @@ export class Hud {
   /** Configura quais blocos aparecem em cada modo. */
   configure(mode: 'br' | 'dm' | 'training'): void {
     document.body.classList.toggle('dm', mode === 'dm');
+    document.body.classList.toggle('br', mode === 'br');
+    this.stormAlert(null);
+    this.setStorm(false);
+    this.setKills(0);
     el('alive-pill').classList.toggle('hidden', mode !== 'br');
+    el('match-stats').classList.toggle('hidden', mode === 'training');
     el('teamscore').classList.toggle('hidden', mode !== 'dm');
     el('zone-info').classList.toggle('hidden', mode !== 'br');
     el('training-panel').classList.toggle('hidden', mode !== 'training');
@@ -346,6 +448,10 @@ export class Hud {
   }
 
   update(dt: number, weapons: WeaponSystem, armedView: boolean, dbg: HudDebug): void {
+    if (this.bannerTimer > 0 && this.bannerTimer !== Infinity) {
+      this.bannerTimer -= dt;
+      if (this.bannerTimer <= 0) this.stormBanner.classList.add('hidden');
+    }
     if (this.placeTimer > 0) {
       this.placeTimer -= dt;
       if (this.placeTimer <= 0 && this.placeEl) this.placeEl.style.opacity = '0';
@@ -413,6 +519,12 @@ export class Hud {
       const slot = this.slotEls[i];
       const name = slot.querySelector('.name') as HTMLElement;
       const mag = slot.querySelector('.mag') as HTMLElement;
+      const pic = slot.querySelector('.pic') as HTMLImageElement | null;
+      const src = s ? this.photos[s.def.id] : undefined;
+      if (pic) {
+        if (src && pic.getAttribute('src') !== src) pic.src = src;
+        slot.classList.toggle('has-pic', !!src);
+      }
       slot.classList.toggle('active', i === weapons.active && !!s);
       slot.classList.toggle('empty', !s);
       if (s) {

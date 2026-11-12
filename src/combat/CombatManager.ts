@@ -1,3 +1,6 @@
+import type { ImpactSurface } from '../core/Audio';
+import { waterAt } from '../world/Water';
+import { DoorSystem } from '../match/DoorSystem';
 import { AbstractMesh, PickingInfo, Ray, Scene, Vector3 } from '@babylonjs/core';
 import type { ColliderIndex } from '../nav/ColliderIndex';
 
@@ -62,6 +65,8 @@ export class CombatManager {
 
   onDamage: ((target: Actor, amount: number, source: Actor | null, headshot: boolean, shieldHit: boolean) => void) | null = null;
   onKill: ((e: KillEvent) => void) | null = null;
+  /** Bala acertou algo (para o som do impacto; só os primeiros projéteis de um disparo). */
+  onImpact: ((point: Vector3, surface: ImpactSurface) => void) | null = null;
 
   constructor(
     private readonly scene: Scene,
@@ -115,6 +120,8 @@ export class CombatManager {
     const candidates: AbstractMesh[] = [];
     for (const a of this.actors) for (const m of a.hitboxes) if (predicate(m)) candidates.push(m);
     for (const m of this.shootables) if (predicate(m)) candidates.push(m);
+    // Portas (peças móveis, fora do índice): a bala para na folha.
+    for (const m of DoorSystem.colliders()) candidates.push(m);
     let best: PickingInfo | null = null;
     for (const p of ray.intersectsMeshes(candidates)) if (p.hit && (!best || p.distance < best.distance)) best = p;
     if (best) return best;
@@ -180,12 +187,18 @@ export class CombatManager {
           const kill = wasAlive && !meta.actor.alive;
           result = merge(result, { point: end, damage: dealt, crit: head, shield: this.lastShieldHit, hitTarget: true, kill });
           this.effects.impact(end, normal, true);
+          if (i < 2) this.onImpact?.(end, 'corpo');
         } else if (meta?.shootable) {
           const r = meta.shootable.onShot(end, damage, shooter);
           result = merge(result, { point: end, damage: r.damage, crit: r.crit, shield: false, hitTarget: true, kill: false });
           this.effects.impact(end, normal, true);
+          if (i < 2) this.onImpact?.(end, 'metal');
         } else {
-          this.effects.impact(end, normal, false);
+          const water = waterAt(end.x, end.z);
+          const wet = !!water && end.y <= water.level + 0.15;
+          if (wet) this.effects.splash(new Vector3(end.x, water!.level, end.z), 0.25);
+          else this.effects.impact(end, normal, false);
+          if (i < 2) this.onImpact?.(end, wet ? 'agua' : normal.y > 0.65 ? 'chao' : 'concreto');
         }
       } else {
         end = aim.origin.add(dir.scale(range));

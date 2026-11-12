@@ -193,7 +193,7 @@ export class WeaponSystem {
     this.reloadTimer = -1;
     this.swapTimer = 0.3;
     this.attachModels();
-    if (this.owner.isPlayer) this.audio.ui();
+    if (this.owner.isPlayer) this.audio.equip(this.slots[slot]!.def.sound);
   }
 
   /** Arma ativa na mão, a outra nas costas. */
@@ -284,12 +284,14 @@ export class WeaponSystem {
       return;
     }
     this.reloadTimer = w.def.reloadTime;
-    if (this.owner.isPlayer) this.audio.reload(w.def.reloadTime);
+    if (this.owner.isPlayer) this.audio.reload(w.def.reloadTime, w.def.sound);
   }
 
-  private volume(): number {
+  /** Volume e abafamento de um tiro pela distância até quem ouve (tiro longe soa abafado). */
+  private hearing(): { vol: number; muffle: number } {
     const d = Vector3.Distance(this.listener(), this.owner.position);
-    return Math.max(0, 1 - d / 120);
+    const loud = this.current?.def.sound === 'sniper' || this.current?.def.sound === 'shotgun' ? 1.35 : 1;
+    return { vol: Math.max(0, 1 - d / (150 * loud)), muffle: Math.min(1, Math.max(0, (d - 12) / 95)) };
   }
 
   private fire(w: WeaponInstance, aim: Ray): void {
@@ -314,8 +316,8 @@ export class WeaponSystem {
     this.owner.ctrl.model.shoot();
 
     this.combat.effects.muzzleFlash(muzzle, aim.direction, def.pellets > 1 || def.id === 'sniper');
-    const vol = this.owner.isPlayer ? 1 : this.volume();
-    if (vol > 0.02) this.audio.shot(def.sound, vol);
+    const h = this.owner.isPlayer ? { vol: 1, muffle: 0 } : this.hearing();
+    if (h.vol > 0.02) this.audio.shot(def.sound, h.vol, h.muffle);
     if (this.cam) {
       const aimK = this.aiming ? 0.6 : 1;
       this.cam.kick(def.recoilPitch * aimK, (Math.random() - 0.5) * 2 * def.recoilYaw * aimK, def.shake);

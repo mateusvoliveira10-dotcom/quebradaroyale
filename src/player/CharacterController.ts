@@ -1,4 +1,6 @@
 import { Terrain } from '../world/Terrain';
+import { waterAt } from '../world/Water';
+import { DoorSystem } from '../match/DoorSystem';
 import { AbstractMesh, Mesh, MeshBuilder, Ray, Scene, Vector3 } from '@babylonjs/core';
 import { DROP, PLAYER, TRAVERSAL, WORLD } from '../core/config';
 import { ColliderIndex } from '../nav/ColliderIndex';
@@ -6,12 +8,14 @@ import { clamp, damp, lerpAngle } from '../utils/random';
 import { AnimMode, CharacterModel, HoldStyle } from './CharacterModel';
 import { findLedge, LedgeInfo, traversalPosition } from './Traversal';
 
-export type CharacterMode = 'plane' | 'freefall' | 'parachute' | 'normal' | 'climb' | 'vault' | 'dead';
+export type CharacterMode = 'plane' | 'freefall' | 'parachute' | 'normal' | 'climb' | 'vault' | 'swim' | 'dead';
 export type MoveState =
   | 'parado'
   | 'andando'
   | 'correndo'
   | 'agachado'
+  | 'deitado'
+  | 'nadando'
   | 'no ar'
   | 'escalando'
   | 'queda livre'
@@ -30,6 +34,8 @@ export interface ControlInput {
   jumpPressed: boolean;
   jumpHeld: boolean;
   crouchToggle: boolean;
+  /** Deitar/levantar (alternância). */
+  proneToggle: boolean;
   /** Para onde o corpo olha quando armado/mirando (rad). null = direção do movimento. */
   faceYaw: number | null;
   /** Inclinação da mira (rad, positivo = para cima). */
@@ -39,7 +45,7 @@ export interface ControlInput {
 }
 
 export function emptyControl(): ControlInput {
-  return { move: Vector3.Zero(), sprint: false, jumpPressed: false, jumpHeld: false, crouchToggle: false, faceYaw: null, aimPitch: 0, dive: 0 };
+  return { move: Vector3.Zero(), sprint: false, jumpPressed: false, jumpHeld: false, crouchToggle: false, proneToggle: false, faceYaw: null, aimPitch: 0, dive: 0 };
 }
 
 /** Estado de combate que influencia movimento e animação. */
@@ -51,8 +57,8 @@ export interface CombatPose {
   firing: boolean;
 }
 
-/** Limite da ilha: um pouco além da linha da praia (dá para molhar os pés, não para nadar). */
-export const MAP_FENCE: Fence = { cx: 0, cz: 0, half: WORLD.extent, r: WORLD.radius + 8 };
+/** Limite da ilha: dá para nadar um trecho de mar além da praia, mas não sumir no horizonte. */
+export const MAP_FENCE: Fence = { cx: 0, cz: 0, half: WORLD.extent, r: WORLD.radius + 40 };
 
 /** Cerca invisível: quadrada (half) ou circular (r, quando definido). */
 export interface Fence {
@@ -63,6 +69,21 @@ export interface Fence {
 }
 
 const PROBE_LIFT = 0.6;
+/** Nado: entra quando a água passa disso acima dos pés; sai quando dá pé (fundo a menos disso da superfície). */
+const SWIM_ENTER = 1.25;
+const SWIM_EXIT_DEPTH = 1.05;
+/** Profundidade dos pés boiando: parado (cabeça e ombros fora) e nadando (corpo deitado na superfície). */
+const FLOAT_IDLE = 1.38;
+const FLOAT_MOVING = 1.08;
+const SWIM_SPEED = 3.6;
+const SWIM_SPRINT = 5.0;
+/** Deitado: altura do colisor, velocidade de rastejar e meio comprimento do corpo (cabeça/pés). */
+const PRONE_HEIGHT = 0.62;
+const CRAWL_SPEED = 1.35;
+const PRONE_HALF = 0.95;
+/** Ladeira mais íngreme que dá para subir correndo sem perder velocidade (tangente). */
+const SLOPE_EASY = 0.45;
+const SLOPE_MAX = 1.2;
 /** Gravidade da queda livre (m/s²). */
 const G_AIR = 9.8;
 /** Maior desnível que o personagem "acompanha" andando (meio-fio, rampa) sem cair. */
@@ -88,6 +109,8 @@ export class CharacterController {
   mode: CharacterMode = 'normal';
   grounded = false;
   crouching = false;
+  /** Deitado (rastejando). Sempre junto com crouching = false. */
+  prone = false;
   sprinting = false;
   state: MoveState = 'parado';
   combat: CombatPose = { hold: null, aiming: false, reloadT: -1, firing: false };
@@ -123,6 +146,11 @@ export class CharacterController {
   onTraversal: ((kind: 'climb' | 'vault') => void) | null = null;
   /** Recuperação de emergência (posição inválida). Nunca é usada no movimento normal. */
   onRecovered: ((reason: string) => void) | null = null;
+  /** Entrou/saiu da água ou deu uma braçada (som e respingo). */
+  onWater: ((kind: 'enter' | 'exit' | 'stroke', at: Vector3, strength: number) => void) | null = null;
+  /** Nível da água em que está nadando (para câmera/efeitos). */
+  waterLevel: number | null = null;
+  private strokeT = 0;
 
   private coyoteTimer = 0;
   private jumpBufferTimer = 0;
@@ -177,6 +205,8 @@ export class CharacterController {
     this.velocity.copyFrom(velocity);
     this.grounded = false;
     this.crouching = false;
+    this.prone = false;
+    this.waterLevel = null;
     this.setColliderHeight(PLAYER.height);
     this.ledge = null;
     // Posição segura passa a ser o centro do mapa até o primeiro pouso desta partida.
@@ -199,6 +229,8 @@ export class CharacterController {
     this.facing = yaw;
     this.grounded = false;
     this.crouching = false;
+    this.prone = false;
+    this.waterLevel = null;
     this.setColliderHeight(PLAYER.height);
     this.ledge = null;
     this.lastSafe.copyFrom(position);
@@ -253,6 +285,9 @@ export class CharacterController {
       case 'vault':
         this.updateTraversal(dt);
         break;
+      case 'swim':
+        this.updateSwim(dt, ctrl);
+        break;
       default:
         this.updateNormal(dt, ctrl);
     }
@@ -292,6 +327,18 @@ export class CharacterController {
     // ----- Agachar / deslizar -----
     // Agachar no meio do sprint vira um deslize: arranque e perda de velocidade em ~0,85 s,
     // na direção em que já se corria (o controle só corrige um pouco).
+    // ----- Deitar (Z) -----
+    // Deitado: C/Ctrl ou Espaço levantam até agachado; Z ou Shift andando ficam em pé.
+    if (this.prone) {
+      if (ctrl.proneToggle || ctrl.crouchToggle || ctrl.jumpPressed) {
+        this.leaveProne(ctrl.proneToggle ? 'stand' : 'crouch');
+        ctrl = { ...ctrl, crouchToggle: false, jumpPressed: false };
+      } else if (ctrl.sprint && hasInput) {
+        this.leaveProne('stand');
+      }
+    } else if (ctrl.proneToggle && wasGrounded && this.slideTimer <= 0) {
+      this.enterProne();
+    }
     if (ctrl.crouchToggle) {
       if (this.crouching) {
         this.slideTimer = 0;
@@ -312,11 +359,11 @@ export class CharacterController {
     // Sprint para só ao mirar (ou deslizando). A arma na mão, qualquer que seja, e o tiro não
     // mudam a velocidade: antes, a arma automática disparando cancelava o sprint e, mirando,
     // o passo caía para 60% — a sensação era de "arma pesada" deixando o personagem lento.
-    this.sprinting = ctrl.sprint && hasInput && !this.combat.aiming && !sliding;
+    this.sprinting = ctrl.sprint && hasInput && !this.combat.aiming && !sliding && !this.prone;
     if (this.sprinting && this.crouching) this.tryStand();
 
-    let targetSpeed = this.crouching ? PLAYER.crouchSpeed : this.sprinting ? PLAYER.runSpeed : PLAYER.walkSpeed;
-    targetSpeed *= this.speedScale;
+    let targetSpeed = this.prone ? CRAWL_SPEED : this.crouching ? PLAYER.crouchSpeed : this.sprinting ? PLAYER.runSpeed : PLAYER.walkSpeed;
+    targetSpeed *= this.speedScale * this.slopeFactor(wish, hasInput);
     let accel = wasGrounded ? (hasInput ? PLAYER.groundAccel : PLAYER.groundDecel) : PLAYER.airAccel;
     if (sliding) {
       this.slideTimer -= dt;
@@ -386,6 +433,7 @@ export class CharacterController {
 
     // ----- Movimento com colisão -----
     const fallSpeed = -this.velocity.y;
+    if (this.prone) this.limitProneMotion();
     const displacement = this.velocity.scale(dt);
     const before = this.root.position.clone();
     this.move(displacement);
@@ -433,18 +481,30 @@ export class CharacterController {
 
     // ----- Orientação -----
     const prevFacing = this.facing;
+    // Deitado o corpo gira devagar (e só se a cabeça e os pés couberem na nova direção).
+    const turnK = this.prone ? 0.35 : 1;
     if (ctrl.faceYaw !== null) {
-      this.facing = lerpAngle(this.facing, ctrl.faceYaw, damp(22, dt));
+      this.facing = lerpAngle(this.facing, ctrl.faceYaw, damp(22 * turnK, dt));
     } else if (hasInput && !sliding) {
-      this.facing = lerpAngle(this.facing, Math.atan2(wish.x, wish.z), damp(PLAYER.turnSharpness, dt));
+      this.facing = lerpAngle(this.facing, Math.atan2(wish.x, wish.z), damp(PLAYER.turnSharpness * turnK, dt));
     }
+    if (this.prone && this.facing !== prevFacing && !this.proneFits(this.facing)) this.facing = prevFacing;
     // giro do corpo por segundo (suavizado), para a inclinação nas curvas
     const dYaw = Math.atan2(Math.sin(this.facing - prevFacing), Math.cos(this.facing - prevFacing));
     this.turnRate += (dYaw / Math.max(dt, 1e-4) - this.turnRate) * damp(10, dt);
 
+    // Água funda: passa a nadar (sem dano de queda: a água amortece).
+    const water = waterAt(this.root.position.x, this.root.position.z);
+    if (water && water.level - this.root.position.y > SWIM_ENTER && water.depth > SWIM_EXIT_DEPTH + 0.1) {
+      this.enterSwim(water.level);
+      return;
+    }
+
     this.state = !this.grounded
       ? 'no ar'
-      : this.crouching
+      : this.prone
+        ? 'deitado'
+        : this.crouching
         ? 'agachado'
         : hSpeed < 0.3
           ? 'parado'
@@ -593,6 +653,13 @@ export class CharacterController {
     this.move(displacement);
     this.applyFence();
     const actual = this.root.position.subtract(before);
+    const wDrop = waterAt(this.root.position.x, this.root.position.z);
+    if (wDrop && wDrop.depth > SWIM_EXIT_DEPTH + 0.1 && this.root.position.y < wDrop.level - 0.3) {
+      // Pouso na água: sem dano, já nadando.
+      this.enterSwim(wDrop.level);
+      this.onDropLanded?.();
+      return;
+    }
     const blockedDown = displacement.y < -0.001 && actual.y > displacement.y * 0.6;
     const groundDist = this.probeGround();
 
@@ -612,6 +679,166 @@ export class CharacterController {
     this.state = parachute ? 'paraquedas' : 'queda livre';
   }
 
+  // ------------------------------------------------------------------ nado
+
+  private enterSwim(level: number): void {
+    const p = this.root.position;
+    this.prone = false;
+    this.crouching = false;
+    this.setColliderHeight(PLAYER.height);
+    this.mode = 'swim';
+    this.waterLevel = level;
+    this.grounded = false;
+    this.slideTimer = 0;
+    this.sprinting = false;
+    const impact = clamp(-this.velocity.y / 14, 0.15, 1);
+    this.velocity.y *= 0.2;
+    this.velocity.x *= 0.6;
+    this.velocity.z *= 0.6;
+    this.onWater?.('enter', new Vector3(p.x, level, p.z), impact);
+  }
+
+  private updateSwim(dt: number, ctrl: ControlInput): void {
+    const p = this.root.position;
+    const w = waterAt(p.x, p.z);
+    if (!w || w.level - w.floor < SWIM_EXIT_DEPTH) {
+      // Deu pé (praia, borda rasa): volta a andar.
+      this.mode = 'normal';
+      this.waterLevel = null;
+      if (w) p.y = Math.max(p.y, w.floor);
+      this.velocity.y = 0;
+      this.grounded = false;
+      this.root.computeWorldMatrix(true);
+      this.onWater?.('exit', new Vector3(p.x, w?.level ?? p.y, p.z), 0.4);
+      this.state = 'andando';
+      return;
+    }
+    this.waterLevel = w.level;
+    const wish = ctrl.move.clone();
+    wish.y = 0;
+    const hasInput = wish.lengthSquared() > 0.0001;
+    if (hasInput) wish.normalize();
+    this.sprinting = false;
+
+    // Sair da água por uma borda (píer, piscina, barranco): Espaço perto dela.
+    if (ctrl.jumpPressed) {
+      const isFree = this.colliders ? (q: Vector3) => this.colliders!.isBodyFree(q) && this.insideFence(q) : undefined;
+      const ledge = findLedge(this.scene, p, hasInput ? wish : this.facingVector(), FLOAT_IDLE + 1.7, this.root, isFree, this.colliders);
+      if (ledge) {
+        this.mode = 'normal';
+        this.waterLevel = null;
+        this.onWater?.('exit', new Vector3(p.x, w.level, p.z), 0.7);
+        this.beginTraversal(ledge);
+        return;
+      }
+    }
+
+    const speed = (ctrl.sprint ? SWIM_SPRINT : SWIM_SPEED) * this.speedScale;
+    const accel = hasInput ? 7 : 3.5;
+    const dvx = (hasInput ? wish.x * speed : 0) - this.velocity.x;
+    const dvz = (hasInput ? wish.z * speed : 0) - this.velocity.z;
+    const dvLen = Math.hypot(dvx, dvz);
+    const s = dvLen > accel * dt ? (accel * dt) / dvLen : 1;
+    this.velocity.x += dvx * s;
+    this.velocity.z += dvz * s;
+    const hs = Math.hypot(this.velocity.x, this.velocity.z);
+    const k = clamp(hs / SWIM_SPEED, 0, 1);
+    // Boia: os pés ficam numa profundidade que depende de estar parado ou nadando; o corpo
+    // sobe e desce de leve a cada braçada.
+    const prevStroke = Math.floor(this.strokeT * 2);
+    this.strokeT += dt * (0.55 + k * 0.75);
+    const bob = Math.sin(this.strokeT * Math.PI * 2) * (0.025 + 0.03 * k);
+    const target = w.level - (FLOAT_IDLE + (FLOAT_MOVING - FLOAT_IDLE) * k) + bob;
+    this.velocity.y += ((target - p.y) * 5 - this.velocity.y) * damp(5, dt);
+
+    this.move(this.velocity.scale(dt));
+    this.applyFence();
+    const terrain = Terrain.current;
+    if (terrain) {
+      const th = terrain.height(p.x, p.z);
+      if (p.y < th) {
+        p.y = th;
+        this.root.computeWorldMatrix(true);
+      }
+    }
+    if (hasInput && Math.floor(this.strokeT * 2) !== prevStroke) this.onWater?.('stroke', new Vector3(p.x, w.level, p.z), k);
+
+    if (ctrl.faceYaw !== null) this.facing = lerpAngle(this.facing, ctrl.faceYaw, damp(10, dt));
+    else if (hasInput) this.facing = lerpAngle(this.facing, Math.atan2(wish.x, wish.z), damp(6, dt));
+    this.turnRate = 0;
+    this.grounded = false;
+    this.state = 'nadando';
+  }
+
+  // ------------------------------------------------------------------ deitado
+
+  private enterProne(): void {
+    if (!this.proneFits(this.facing)) {
+      // Sem espaço para o corpo deitado (parede na frente/atrás): fica agachado.
+      if (!this.crouching) this.setCrouch(true);
+      return;
+    }
+    this.crouching = false;
+    this.prone = true;
+    this.sprinting = false;
+    this.slideTimer = 0;
+    this.setColliderHeight(PRONE_HEIGHT);
+  }
+
+  private leaveProne(to: 'stand' | 'crouch'): void {
+    if (!this.prone) return;
+    if (!this.headroom(PLAYER.crouchHeight)) return;
+    this.prone = false;
+    this.setCrouch(true);
+    if (to === 'stand') this.tryStand();
+  }
+
+  /** Há espaço acima para ficar com essa altura? */
+  private headroom(h: number): boolean {
+    if (!this.colliders) return true;
+    return this.colliders.raycast(this.root.position.add(new Vector3(0, 0.3, 0)), new Vector3(0, 1, 0), h - 0.25) === null;
+  }
+
+  /** Distância livre a partir do quadril, na altura do corpo deitado (até o meio corpo + folga). */
+  private proneClear(dir: Vector3): number {
+    if (!this.colliders) return 9;
+    const hit = this.colliders.raycast(this.root.position.add(new Vector3(0, 0.28, 0)), dir, PRONE_HALF + 0.15);
+    return hit ?? 9;
+  }
+
+  private proneFits(yaw: number): boolean {
+    const f = new Vector3(Math.sin(yaw), 0, Math.cos(yaw));
+    return this.proneClear(f) > PRONE_HALF - 0.05 && this.proneClear(f.negate()) > PRONE_HALF - 0.25;
+  }
+
+  /** Cabeça e pés do corpo deitado não entram em paredes: corta a velocidade nessa direção. */
+  private limitProneMotion(): void {
+    const f = this.facingVector();
+    const along = this.velocity.x * f.x + this.velocity.z * f.z;
+    const blocked = along > 0 ? this.proneClear(f) < PRONE_HALF : along < 0 && this.proneClear(f.negate()) < PRONE_HALF - 0.2;
+    if (blocked) {
+      this.velocity.x -= f.x * along;
+      this.velocity.z -= f.z * along;
+    }
+  }
+
+  // ------------------------------------------------------------------ relevo
+
+  /**
+   * Ladeira do relevo (fora dos colisores): subir morro íngreme fica mais lento, descer não.
+   * Só vale com os pés no chão do relevo.
+   */
+  private slopeFactor(wish: Vector3, hasInput: boolean): number {
+    const terrain = Terrain.current;
+    if (!terrain || !hasInput || !this.grounded) return 1;
+    const p = this.root.position;
+    const h0 = terrain.height(p.x, p.z);
+    if (Math.abs(p.y - h0) > 0.12) return 1;
+    const grade = (terrain.height(p.x + wish.x * 0.8, p.z + wish.z * 0.8) - h0) / 0.8;
+    if (grade <= SLOPE_EASY) return 1;
+    return clamp(1 - ((grade - SLOPE_EASY) / (SLOPE_MAX - SLOPE_EASY)) * 0.65, 0.35, 1);
+  }
+
   private animate(dt: number): void {
     this.model.root.rotation.y = this.facing;
     const hSpeed = Math.hypot(this.velocity.x, this.velocity.z);
@@ -625,6 +852,7 @@ export class CharacterController {
       grounded: this.grounded,
       verticalSpeed: this.velocity.y,
       crouching: this.crouching,
+      prone: this.prone,
       sprinting: this.sprinting,
       mode,
       traversalT: this.traversalProgress,
@@ -686,7 +914,11 @@ export class CharacterController {
       // Só os colisores perto do trajeto (ver ColliderIndex.meshesAround).
       const p = this.root.position;
       const r = Math.hypot(displacement.x, displacement.z) * 0.5 + PLAYER.radius + 1.5;
-      this.root.surroundingMeshes = this.colliders.meshesAround(p.x + displacement.x * 0.5, p.z + displacement.z * 0.5, r);
+      const cx = p.x + displacement.x * 0.5;
+      const cz = p.z + displacement.z * 0.5;
+      const doors = DoorSystem.collidersAround(cx, cz, r);
+      const near = this.colliders.meshesAround(cx, cz, r);
+      this.root.surroundingMeshes = doors.length ? near.concat(doors) : near;
     }
     this.root.moveWithCollisions(displacement);
     this.root.computeWorldMatrix(true);
@@ -695,6 +927,11 @@ export class CharacterController {
   /** Distância dos pés até o chão logo abaixo (pode ser levemente negativa), ou null. */
   private probeGround(): number | null {
     const pos = this.root.position;
+    // O relevo não é colisor: entra na conta como chão (senão, descendo um morro o personagem
+    // "decolava" a cada passo e a animação piscava entre andar e cair).
+    const th = Terrain.current?.height(pos.x, pos.z);
+    const dTerrain = th === undefined ? null : pos.y - th;
+    const withTerrain = (d: number | null) => (dTerrain === null || dTerrain > 0.6 ? d : d === null ? dTerrain : Math.min(d, dTerrain));
     if (this.colliders) {
       // Consulta direta ao índice espacial (bem mais barato que picking na cena inteira).
       let best: number | null = null;
@@ -705,7 +942,7 @@ export class CharacterController {
         if (d > 0.6) continue;
         if (best === null || d < best) best = d;
       }
-      return best;
+      return withTerrain(best);
     }
     const down = new Vector3(0, -1, 0);
     const predicate = (m: AbstractMesh) => m.checkCollisions && m !== this.root;

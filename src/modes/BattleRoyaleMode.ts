@@ -1,3 +1,4 @@
+import type { Actor } from '../combat/Actor';
 import { Terrain } from '../world/Terrain';
 import { Vector3 } from '@babylonjs/core';
 import { KillEvent } from '../combat/CombatManager';
@@ -33,6 +34,9 @@ export class BattleRoyaleMode implements GameMode {
   private ended = false;
   private endTimer = -1;
   private zoneTick = 0;
+  /** Segundos seguidos de cada personagem dentro da tempestade (o dano cresce com isso). */
+  private readonly inStorm = new Map<Actor, number>();
+  private wasOutside = false;
   private matchTime = 0;
   private placement = 0;
   private introT = 0;
@@ -45,6 +49,26 @@ export class BattleRoyaleMode implements GameMode {
 
   constructor(private readonly g: Game) {
     this.zone = new SafeZone(g.scene, this.rng, g.map.half);
+    // Avisos claros da tempestade (como no Free Fire/Fortnite): antes de fechar, ao começar a
+    // fechar e quando a nova zona fica parada; cada aviso com som.
+    this.zone.onEvent = (e) => {
+      if (this.ended) return;
+      const total = this.zone.phaseCount;
+      if (e.kind === 'warn') {
+        g.hud.stormAlert(`A TEMPESTADE VAI FECHAR EM ${e.seconds} s`, `Fase ${e.phase + 1} de ${total} · vá para dentro do círculo branco`, false, 4);
+        g.audio.zoneAlert(false);
+      } else if (e.kind === 'shrinking') {
+        g.hud.stormAlert('A TEMPESTADE ESTÁ FECHANDO!', `Fase ${e.phase + 1} de ${total} · ${e.seconds} s até a nova zona`, true, 5);
+        g.audio.zoneAlert(true);
+      } else if (e.kind === 'settled') {
+        const t = e.next ?? 0;
+        g.hud.stormAlert('NOVA ZONA MARCADA NO MAPA', `A tempestade volta a fechar em ${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`, false, 4);
+        g.audio.zoneAlert(false);
+      } else {
+        g.hud.stormAlert('ZONA FINAL', 'A tempestade cobriu tudo: o último vivo vence', true, 5);
+        g.audio.zoneAlert(true);
+      }
+    };
     this.fx = new DropFx(g.scene);
     this.fx.setPois(this.pois());
   }
@@ -84,6 +108,8 @@ export class BattleRoyaleMode implements GameMode {
     this.endTimer = -1;
     this.matchTime = 0;
     this.zoneTick = 0;
+    this.inStorm.clear();
+    this.wasOutside = false;
     this.introT = 0;
     this.lastPhase = 'plane';
     this.fovKick = 0;
@@ -150,6 +176,10 @@ export class BattleRoyaleMode implements GameMode {
   }
 
   exit(): void {
+    this.inStorm.clear();
+    this.g.compassTarget = null;
+    this.g.hud.setStorm(false);
+    this.g.hud.stormAlert(null);
     this.fx.stop();
     this.g.drop.end();
     this.zone.stop();
@@ -204,8 +234,14 @@ export class BattleRoyaleMode implements GameMode {
       if (this.zoneTick <= 0) {
         this.zoneTick = 1;
         for (const a of g.combat.alive) {
-          if (a.ctrl.mode === 'plane' || this.zone.isSafe(a.position)) continue;
-          g.combat.applyDamage(a, this.zone.damagePerSecond, null, 'Zona');
+          if (a.ctrl.mode === 'plane' || this.zone.isSafe(a.position)) {
+            this.inStorm.delete(a);
+            continue;
+          }
+          const t = (this.inStorm.get(a) ?? 0) + 1;
+          this.inStorm.set(a, t);
+          g.combat.applyDamage(a, this.zone.damageFor(t - 1), null, 'Tempestade');
+          if (a.isPlayer) g.audio.stormTick();
         }
       }
     }
@@ -306,9 +342,20 @@ export class BattleRoyaleMode implements GameMode {
 
     const z = this.zone;
     const outside = g.player.alive && phase === 'landed' && !z.isSafe(g.player.position);
-    const t = Math.ceil(z.timer);
-    const text = z.finished ? 'ZONA FINAL' : z.state === 'wait' ? `ZONA FECHA EM ${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}` : `ZONA FECHANDO · ${t}s`;
-    g.hud.setZone(outside ? `VOCÊ ESTÁ FORA DA ZONA! ${text}` : text, outside);
+    const t = Math.max(0, Math.ceil(z.timer));
+    const clock = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+    g.hud.setZoneStat(z.finished ? 'FINAL' : clock, outside ? 'outside' : z.state === 'shrink' ? 'closing' : 'wait');
+    g.hud.setStorm(outside);
+    if (outside) {
+      const d = Math.ceil(z.distanceOutside(g.player.position));
+      const dps = Math.round(z.damageFor(this.inStorm.get(g.player) ?? 0));
+      g.hud.stormAlert('VOCÊ ESTÁ NA TEMPESTADE!', `Zona segura a ${d} m (siga o ponto roxo na bússola) · −${dps} de vida por segundo`, true, 0);
+      this.wasOutside = true;
+    } else if (this.wasOutside) {
+      this.wasOutside = false;
+      g.hud.stormAlert(null);
+    }
+    g.compassTarget = phase === 'landed' && !z.finished ? (outside ? z.center : z.targetCenter) : null;
 
     const plane = g.drop.plane.root.isEnabled() ? { pos: g.drop.planePosition, dir: g.drop.plane.root.rotation.y } : null;
     g.updateMinimap(this.focus(), plane, phase === 'landed' ? g.loot.weaponPositions() : [], { center: z.center, radius: z.radius, next: z.targetCenter, nextRadius: z.targetRadius }, [], phase !== 'landed');

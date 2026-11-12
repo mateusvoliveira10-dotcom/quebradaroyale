@@ -8,6 +8,7 @@ import { ThirdPersonCamera } from '../camera/ThirdPersonCamera';
 import { Actor, TEAM_COLORS } from '../combat/Actor';
 import { CombatManager, KillEvent } from '../combat/CombatManager';
 import { LootSystem } from '../loot/LootSystem';
+import { DoorSystem } from '../match/DoorSystem';
 import { DropSequence } from '../match/DropSequence';
 import { SafeZone } from '../match/SafeZone';
 import { loadAirAssets } from '../match/Vehicles';
@@ -79,6 +80,8 @@ export class Game {
   readonly effects: WeaponEffects;
   readonly combat: CombatManager;
   readonly loot: LootSystem;
+  /** Portas que abrem (E), registradas pelo mapa. */
+  readonly doors = new DoorSystem();
   readonly drop: DropSequence;
   readonly hud: Hud;
   /** Chat global e privado (Enter abre). */
@@ -238,6 +241,14 @@ export class Game {
     this.combat = new CombatManager(this.scene, this.effects);
     this.combat.colliders = this.colliders;
     this.combat.onKill = (e) => this.mode.onKill?.(e);
+    this.combat.onImpact = (point, surface) => {
+      const d = Vector3.Distance(point, this.camera.camera.position);
+      if (d < 40) this.audio.impact(surface, 0.85 * (1 - d / 40));
+    };
+    this.doors.onSound = (open, at) => {
+      const d = Vector3.Distance(at, this.camera.camera.position);
+      if (d < 30) this.audio.door(open);
+    };
     this.combat.onDamage = (target, amount, source, _head, shieldHit) => {
       if (target.isPlayer && amount > 0) {
         this.hud.hurt(shieldHit);
@@ -269,6 +280,7 @@ export class Game {
     this.chat.onToggle = () => this.input.releaseAll();
     this.chat.system('Enter: conversar no chat global · /m Nome texto: mensagem privada');
     this.hud.setPlayerName(this.settings.playerName);
+    this.hud.photos = this.weaponPhotos;
     this.minimap = new Minimap(this.map.features, this.map.half);
     this.overlays = new Overlays();
     this.overlays.onClick = () => this.audio.ui();
@@ -346,6 +358,9 @@ export class Game {
   private minimapFresh = false;
   /** Fotos das armas (data URL por id), feitas na abertura. */
   readonly weaponPhotos: Partial<Record<WeaponId, string>> = {};
+  /** Ponto marcado na bússola (centro da próxima zona no Battle Royale), ou null. */
+  compassTarget: Vector3 | null = null;
+  private shownKills = -1;
 
   startMode(id: ModeId): void {
     this.audio.unlock();
@@ -488,6 +503,20 @@ export class Game {
     a.ctrl.onRecovered = (reason) => {
       if (a.isPlayer) this.hud.toast(`Posição recuperada (${reason})`, '#ff9a3a');
     };
+    // Água: respingo e som ao entrar/sair e a cada braçada (bots só perto da câmera).
+    a.ctrl.onWater = (kind, at, strength) => {
+      const d = Vector3.Distance(at, this.camera.camera.position);
+      if (d > 60) return;
+      const near = a.isPlayer ? 1 : Math.max(0, 1 - d / 60);
+      if (kind === 'stroke') {
+        this.effects.ripple(at, 1.2 + strength * 0.8, 0.9);
+        if (strength > 0.3) this.effects.splash(at, 0.12 + strength * 0.15);
+        this.audio.stroke(0.6 * strength * near);
+      } else {
+        this.effects.splash(at, kind === 'enter' ? 0.35 + strength * 0.65 : 0.3);
+        if (near > 0.05) this.audio.splash((kind === 'enter' ? 0.3 + strength * 0.7 : 0.3) * near);
+      }
+    };
     if (a.isPlayer) {
       a.ctrl.onTraversal = () => this.audio.whoosh();
       a.ctrl.model.onFootstep = (running) => {
@@ -512,6 +541,8 @@ export class Game {
     // Agachar alterna com C ou Ctrl (toque). Segurar Ctrl e apertar W fecha a aba no navegador,
     // atalho que a página não pode bloquear: por isso é alternância, e o C também funciona.
     c.crouchToggle = i.wasPressed('KeyC') || i.wasPressed('ControlLeft') || i.wasPressed('ControlRight');
+    // Deitar/levantar (Z), como nos battle royales que têm posição deitada.
+    c.proneToggle = i.wasPressed('KeyZ');
     const armed = this.playerWeapons.current !== null;
     const aimHeld = i.isMouseDown(2);
     // Armado ou mirando: o corpo acompanha a câmera (strafe). Desarmado: olha para onde anda.
@@ -551,11 +582,16 @@ export class Game {
       return ray;
     });
     this.playerWeapons.setVisibleAll(p.ctrl.mode !== 'plane');
-    if (useLoot) {
-      this.loot.updatePlayer(dt, this.input, this.camera, p, this.playerWeapons);
-      const pr = this.loot.prompt;
-      this.hud.setPrompt(pr ? pr.text : null, pr?.color);
+    const pr = useLoot ? (this.loot.updatePlayer(dt, this.input, this.camera, p, this.playerWeapons), this.loot.prompt) : null;
+    // Portas: E abre/fecha a mais perto (o loot tem prioridade quando os dois estão ao alcance).
+    const bots: Array<{ position: Vector3; moving: boolean }> = [];
+    for (const a of this.combat.actors) {
+      if (a.isPlayer || !a.alive || a.ctrl.mode !== 'normal') continue;
+      const v = a.ctrl.velocity;
+      bots.push({ position: a.position, moving: v.x * v.x + v.z * v.z > 0.5 });
     }
+    this.doors.update(dt, p.ctrl.mode === 'normal' ? p : null, allowInput && this.input.captured && this.input.wasPressed('KeyE'), !!pr, bots);
+    if (useLoot || this.doors.prompt) this.hud.setPrompt(pr ? pr.text : this.doors.prompt, pr?.color);
     this.hud.setHealth(p.health, p.shield);
   }
 
@@ -578,7 +614,7 @@ export class Game {
   followPlayerCamera(dt: number): void {
     const p = this.player.ctrl;
     this.camera.updateFollow(dt, p.position, {
-      height: p.crouching ? CAMERA.crouchTargetHeight : p.mode === 'dead' ? 0.8 : CAMERA.targetHeight,
+      height: p.prone ? CAMERA.proneTargetHeight : p.crouching ? CAMERA.crouchTargetHeight : p.mode === 'dead' ? 0.8 : CAMERA.targetHeight,
       aiming: this.playerWeapons.aiming,
       sprinting: p.sprinting && p.grounded,
       aimFov: this.playerWeapons.aimFov,
@@ -702,6 +738,18 @@ export class Game {
         const place = this.mode === this.lobby || !this.player.alive ? null : placeAt(p.x, p.z);
         if (place && place !== this.lastPlace) this.hud.showPlace(place);
         this.lastPlace = place;
+      }
+      if (this.mode !== this.lobby) {
+        // Bússola: para onde a câmera olha (0 = norte/+Z, 90 = leste/+X) e o centro da zona.
+        const f = this.camera.getForward();
+        const heading = (Math.atan2(f.x, f.z) * 180) / Math.PI;
+        const zc = this.compassTarget;
+        const zh = zc ? (Math.atan2(zc.x - p.x, zc.z - p.z) * 180) / Math.PI : null;
+        this.hud.setCompass(heading, p.x, p.z, zh);
+        if (this.player.kills !== this.shownKills) {
+          this.shownKills = this.player.kills;
+          this.hud.setKills(this.player.kills);
+        }
       }
       this.hud.update(dt, this.playerWeapons, this.mode !== this.lobby && !!this.playerWeapons.current && this.player.ctrl.mode === 'normal' && this.player.alive, {
         fps: this.engine.getFps(),

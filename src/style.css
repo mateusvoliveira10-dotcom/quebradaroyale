@@ -1481,3 +1481,197 @@ body.jogando * {
   color: #fff;
   font: inherit;
 }
+
+
+/* ---------------------------------------------------------------- HUD 2.0 */
+/* Fase e relógio da partida: canto de cima à esquerda (o centro é da bússola). */
+#topbar { left: 16px; top: 14px; transform: none; }
+#phase-pill, #match-timer { font-size: 12px; padding: 5px 12px; }
+
+/* Bússola com graus e coordenadas (topo central). */
+#compass {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(520px, 46vw);
+  pointer-events: none;
+  text-align: center;
+}
+#compass-strip {
+  position: relative;
+  height: 30px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: linear-gradient(90deg, transparent, rgba(12, 10, 18, 0.55) 18%, rgba(12, 10, 18, 0.55) 82%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 14%, #000 86%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 14%, #000 86%, transparent);
+}
+#compass-strip .cmp-t {
+  position: absolute;
+  bottom: 3px;
+  width: 2px;
+  height: 7px;
+  margin-left: -1px;
+  background: rgba(255, 255, 255, 0.55);
+}
+#compass-strip .cmp-t.cmp-big { height: 11px; background: rgba(255, 255, 255, 0.8); }
+#compass-strip .cmp-l {
+  position: absolute;
+  top: 2px;
+  transform: translateX(-50%);
+  font: 800 13px 'Segoe UI', sans-serif;
+  color: #fff;
+  text-shadow: 0 1px 2px #000;
+}
+#compass-strip .cmp-l.cmp-card { font: 900 16px Impact, 'Arial Black', sans-serif; top: 0; }
+#compass-strip .cmp-l.cmp-north { color: var(--yellow); }
+#compass-strip .cmp-l.cmp-num { font-size: 10px; top: 5px; opacity: 0.8; }
+#compass-strip .zone-dot {
+  position: absolute;
+  top: 5px;
+  width: 12px;
+  height: 12px;
+  margin-left: -6px;
+  border-radius: 50%;
+  background: #b06bff;
+  box-shadow: 0 0 6px #b06bff;
+}
+#compass-mark {
+  width: 0;
+  height: 0;
+  margin: 0 auto;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-top: 8px solid var(--yellow);
+  transform: translateY(-1px);
+}
+#compass-read {
+  display: inline-flex;
+  gap: 10px;
+  align-items: baseline;
+  margin-top: 1px;
+  padding: 2px 10px;
+  border-radius: 6px;
+  background: rgba(12, 10, 18, 0.55);
+  font: 700 12px 'Segoe UI', sans-serif;
+  letter-spacing: 1px;
+  text-shadow: 0 1px 2px #000;
+}
+#compass-read b { font: 900 15px Impact, 'Arial Black', sans-serif; color: var(--yellow); min-width: 30px; }
+body.dm #compass { top: 64px; }
+
+/* Placar da partida debaixo do minimapa: zona, vivos e abates. */
+#match-stats {
+  position: absolute;
+  top: 252px;
+  right: 14px;
+  width: 220px;
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+}
+#match-stats .st {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  background: var(--panel-strong);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+#match-stats .st svg { width: 17px; height: 17px; color: #fff; flex: none; }
+#match-stats .st b { font: 900 16px Impact, 'Arial Black', sans-serif; letter-spacing: 1px; }
+#zone-stat { color: #d9b8ff !important; }
+#zone-stat svg { color: #b06bff !important; }
+#zone-stat.closing { background: rgba(110, 40, 190, 0.85); animation: pulse-soft 0.9s infinite alternate; }
+#zone-stat.outside { background: rgba(200, 30, 60, 0.9); }
+@keyframes pulse-soft { to { filter: brightness(1.35); } }
+#alive-pill { padding: 4px 6px; border-radius: 8px; font: inherit; letter-spacing: 0; }
+#alive-pill b { color: #fff; font-size: 16px; }
+#killfeed { top: 290px; }
+body:not(.br) #zone-stat { display: none; }
+
+/* Aviso grande da tempestade (abaixo da bússola). */
+#storm-banner {
+  position: absolute;
+  top: 74px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 7px 26px 8px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(110, 40, 190, 0.92), rgba(70, 20, 130, 0.92));
+  border: 1px solid rgba(220, 180, 255, 0.5);
+  box-shadow: 0 4px 18px rgba(80, 20, 160, 0.5);
+  text-align: center;
+  animation: banner-in 0.25s ease-out;
+  pointer-events: none;
+}
+#storm-banner span { font: 900 19px Impact, 'Arial Black', sans-serif; letter-spacing: 1.5px; }
+#storm-banner b { font: 700 13px 'Segoe UI', sans-serif; letter-spacing: 1px; opacity: 0.95; }
+#storm-banner.danger { background: linear-gradient(180deg, rgba(210, 30, 60, 0.95), rgba(140, 10, 40, 0.95)); border-color: rgba(255, 170, 170, 0.6); animation: banner-in 0.25s ease-out, pulse-soft 0.7s infinite alternate; }
+@keyframes banner-in { from { opacity: 0; transform: translate(-50%, -8px); } }
+#zone-info { display: none !important; }
+
+/* Dentro da tempestade: a tela fica roxa nas bordas. */
+#storm-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.6s;
+  background: radial-gradient(circle at center, rgba(120, 50, 220, 0.08) 35%, rgba(110, 40, 210, 0.55) 100%);
+}
+#storm-overlay.on { opacity: 1; }
+
+/* Vida e escudo (canto de baixo à esquerda): ícone, número, barra inclinada e máximo. */
+#health-wrap { width: 330px; padding: 8px 12px 10px; background: linear-gradient(90deg, rgba(12, 10, 18, 0.7), rgba(12, 10, 18, 0.25)); }
+#health-label { font: 800 12px 'Segoe UI', sans-serif; letter-spacing: 2px; opacity: 0.85; margin-bottom: 3px; }
+.vital { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.vital .ico { width: 22px; height: 22px; display: inline-flex; flex: none; }
+.vital .ico svg { width: 100%; height: 100%; }
+.vital.shield .ico { color: #4fb6ff; }
+.vital.hp .ico { color: #3be36b; }
+.vital b { width: 40px; text-align: right; font: 900 22px Impact, 'Arial Black', sans-serif; text-shadow: 0 2px 0 rgba(0, 0, 0, 0.5); }
+.vital .max { font: 700 11px 'Segoe UI', sans-serif; opacity: 0.6; width: 26px; }
+#shield-bar, #health-bar {
+  flex: 1;
+  height: 13px;
+  margin: 0;
+  border-radius: 3px;
+  transform: skewX(-14deg);
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+#health-bar { height: 17px; }
+#shield-num { color: #7fd0ff; }
+
+/* Inventário: espaços quadrados com a foto da arma (o ativo sobe com a cor da raridade). */
+.slot {
+  width: 96px;
+  height: 96px;
+  padding: 0;
+  border-radius: 10px;
+  background: linear-gradient(160deg, rgba(40, 36, 52, 0.85), rgba(14, 12, 20, 0.85));
+  border: 2px solid rgba(255, 255, 255, 0.16);
+}
+.slot.active { transform: translateY(-8px); box-shadow: 0 0 0 2px var(--rarity, #fff), 0 6px 16px rgba(0, 0, 0, 0.5); }
+.slot::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 60%, color-mix(in srgb, var(--rarity, #888) 45%, transparent), transparent 70%);
+  opacity: 0.7;
+}
+.slot .pic { position: absolute; left: 4px; right: 4px; top: 14px; width: calc(100% - 8px); height: 52px; object-fit: contain; display: none; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.6)); }
+.slot.has-pic .pic { display: block; }
+.slot .key { top: 4px; left: 7px; right: auto; font: 900 12px 'Segoe UI', sans-serif; opacity: 0.85; }
+.slot .name { position: absolute; top: 4px; right: 6px; left: 22px; text-align: right; font: 800 9px 'Segoe UI', sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.slot .mag { position: absolute; left: 0; right: 0; bottom: 6px; text-align: center; font: 900 18px Impact, 'Arial Black', sans-serif; text-shadow: 0 1px 2px #000; }
+.slot .mag small { font-size: 12px; }

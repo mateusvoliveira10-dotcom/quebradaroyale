@@ -173,7 +173,7 @@ export class DropSequence {
             if (r.actor.isPlayer) this.audio.parachute();
             this.setPhase(r, 'parachute');
           }
-          if (ctrl.mode === 'normal' || ctrl.mode === 'dead') this.land(r);
+          if (ctrl.mode === 'normal' || ctrl.mode === 'swim' || ctrl.mode === 'dead') this.land(r);
           break;
         }
         case 'parachute': {
@@ -194,7 +194,7 @@ export class DropSequence {
           r.sway += (clamp(-lateral * 0.05, -0.3, 0.3) - r.sway) * Math.min(1, dt * 2);
           chute.rotation.z = r.sway + Math.sin(this.travelled * 0.05 + r.jumpAt * 9) * 0.03;
           chute.rotation.x = -0.08;
-          if (ctrl.mode === 'normal' || ctrl.mode === 'dead') this.land(r);
+          if (ctrl.mode === 'normal' || ctrl.mode === 'swim' || ctrl.mode === 'dead') this.land(r);
           break;
         }
         case 'landed': {

@@ -31,14 +31,25 @@
       <div id="topbar">
         <div id="phase-pill">NO AVIÃO</div>
         <div id="match-timer">00:00</div>
-        <div id="alive-pill" class="hidden"><b id="alive-count">3</b> VIVOS</div>
       </div>
+      <div id="compass">
+        <div id="compass-strip"></div>
+        <div id="compass-mark"></div>
+        <div id="compass-read"><b id="compass-deg">0</b><span id="coords">X 0 · Z 0</span></div>
+      </div>
+      <div id="storm-banner" class="hidden"><span id="storm-title">A TEMPESTADE VAI FECHAR</span><b id="storm-sub"></b></div>
+      <div id="storm-overlay"></div>
       <div id="teamscore" class="hidden">
         <div class="team blue"><span>AZUL</span><b id="score-blue">0</b></div>
         <div id="dm-timer">05:00</div>
         <div class="team red"><b id="score-red">0</b><span>VERMELHO</span></div>
       </div>
       <div id="zone-info" class="hidden"></div>
+      <div id="match-stats">
+        <span class="st" id="zone-stat" title="Zona"><svg viewBox="0 0 24 24"><path d="M6 15a5 5 0 0 1 .6-9.96A6 6 0 0 1 18 7a4 4 0 0 1 0 8z" fill="currentColor"/><path d="M12 14l-2.5 5h3L11 23l5-6h-3l2-3z" fill="#ffd21f"/></svg><b id="zone-time">0:00</b></span>
+        <span class="st" id="alive-pill" title="Vivos"><svg viewBox="0 0 24 24"><circle cx="12" cy="7" r="4" fill="currentColor"/><path d="M4 22c0-4.4 3.6-8 8-8s8 3.6 8 8z" fill="currentColor"/></svg><b id="alive-count">0</b></span>
+        <span class="st" id="kills-pill" title="Abates"><svg viewBox="0 0 24 24"><path d="M12 2C7 2 3.5 5.6 3.5 10.2c0 2.8 1.3 4.7 3 5.9V19c0 .6.4 1 1 1h1.5v2h2v-2h2v2h2v-2h1.5c.6 0 1-.4 1-1v-2.9c1.7-1.2 3-3.1 3-5.9C20.5 5.6 17 2 12 2z" fill="currentColor"/><circle cx="8.6" cy="11" r="2.1" fill="#1b1420"/><circle cx="15.4" cy="11" r="2.1" fill="#1b1420"/></svg><b id="kill-count">0</b></span>
+      </div>
       <div id="protect" class="hidden">PROTEGIDO</div>
       <div id="respawn" class="hidden">Renascendo em <b id="respawn-time">4</b>…</div>
 
@@ -70,16 +81,16 @@
       <div id="reload" class="hidden"><div id="reload-fill"></div><span>RECARREGANDO</span></div>
 
       <div id="health-wrap">
-        <div id="health-label"><span id="player-name">VOCÊ</span><span class="nums"><b id="shield-num" class="zero">0</b><b id="health-num">100</b></span></div>
-        <div id="shield-bar"><div id="shield-fill"></div></div>
-        <div id="health-bar"><div id="health-fill"></div></div>
+        <div id="health-label"><span id="player-name">VOCÊ</span></div>
+        <div class="vital shield"><i class="ico"><svg viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.4 9.4-8 11-4.6-1.6-8-6-8-11V5z" fill="currentColor"/></svg></i><b id="shield-num" class="zero">0</b><div id="shield-bar"><div id="shield-fill"></div></div><span class="max">100</span></div>
+        <div class="vital hp"><i class="ico"><svg viewBox="0 0 24 24"><path d="M9 3h6v6h6v6h-6v6H9v-6H3V9h6z" fill="currentColor"/></svg></i><b id="health-num">100</b><div id="health-bar"><div id="health-fill"></div></div><span class="max">100</span></div>
       </div>
 
       <div id="loadout">
         <div class="ammo-reserve" id="ammo-reserve"></div>
         <div class="slots">
-          <div class="slot" id="slot-0"><span class="key">1</span><span class="name">Vazio</span><span class="mag"></span><span class="bar"></span></div>
-          <div class="slot" id="slot-1"><span class="key">2</span><span class="name">Vazio</span><span class="mag"></span><span class="bar"></span></div>
+          <div class="slot" id="slot-0"><img class="pic" alt="" /><span class="key">1</span><span class="name">Vazio</span><span class="mag"></span><span class="bar"></span></div>
+          <div class="slot" id="slot-1"><img class="pic" alt="" /><span class="key">2</span><span class="name">Vazio</span><span class="mag"></span><span class="bar"></span></div>
         </div>
       </div>
 
@@ -88,7 +99,8 @@
         <strong>Controles</strong>
         <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> mover · <kbd>Shift</kbd> correr</span>
         <span><kbd>Espaço</kbd> pular / escalar muro</span>
-        <span><kbd>C</kbd> agachar · <kbd>E</kbd> pegar</span>
+        <span><kbd>C</kbd> agachar · <kbd>Z</kbd> deitar/rastejar</span>
+        <span><kbd>E</kbd> pegar / abrir porta · nade na água funda (<kbd>Espaço</kbd> sai pela borda)</span>
         <span><kbd>1</kbd><kbd>2</kbd><kbd>Q</kbd> armas · <kbd>R</kbd> recarregar</span>
         <span><kbd>Mouse esq.</kbd> atirar · <kbd>Mouse dir.</kbd> mirar</span>
         <span><kbd>H</kbd> ajuda · <kbd>F3</kbd> debug · <kbd>Esc</kbd> menu</span>
