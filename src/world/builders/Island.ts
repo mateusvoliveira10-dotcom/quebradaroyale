@@ -4,6 +4,7 @@ import { WORLD } from '../../core/config';
 import { Rng } from '../../utils/random';
 import { LAKE, OUTER_POIS, SEA_LEVEL, Terrain, TerrainPoi } from '../Terrain';
 import { WorldAssets } from '../WorldAssets';
+import { clearWater, registerDefaultWater } from '../Water';
 import { WorldBuilder } from '../WorldBuilder';
 import { buildHouse, HouseInfo } from './House';
 import { addCar, addFootballField, addPlasticChair, addPlasticTable, addSign } from './Props';
@@ -33,6 +34,8 @@ export function buildIsland(b: WorldBuilder, terrain: Terrain): IslandResult {
   const free = (x: number, z: number, r: number) => !used.some(([ux, uz, ur]) => (ux - x) ** 2 + (uz - z) ** 2 < (ur + r) ** 2);
   const reserve = (x: number, z: number, r: number) => used.push([x, z, r]);
 
+  clearWater();
+  registerDefaultWater();
   buildWater(b);
 
   // ---------------------------------------------------------- Vila dos Pescadores
