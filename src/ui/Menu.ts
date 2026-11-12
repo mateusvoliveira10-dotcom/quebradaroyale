@@ -8,6 +8,7 @@ import {
   Option,
   toggleAccessory,
 } from '../appearance/Appearance';
+import { BACKPACKS, HEADPHONES, WATCHES } from '../appearance/Appearance';
 import { HAIRS } from '../appearance/Styles';
 import { CHAIN_CATALOG, chainById, ChainId, chainThumb } from '../customization/chains';
 import { glassesThumb } from '../customization/glasses';
@@ -68,17 +69,46 @@ function tileHtml(m: ModeCard, uid: string): string {
   return `<div class="media" style="--mc:${m.color}"><div class="art">${art}</div><div class="tile-info"><span class="tag">${m.tag}</span><b>${m.name}</b><span class="sub">${m.short}</span></div></div>`;
 }
 
-type Category = 'hair' | 'glasses' | 'jersey' | 'chains' | 'accessories' | 'bottom' | 'shoes';
+type Category = 'hair' | 'glasses' | 'cap' | 'phones' | 'jersey' | 'chains' | 'bottom' | 'shoes' | 'watch' | 'bracelet' | 'backpack';
 
-const CATEGORIES: Array<{ id: Category; name: string }> = [
-  { id: 'hair', name: 'CABELO' },
-  { id: 'glasses', name: 'ÓCULOS' },
-  { id: 'jersey', name: 'CAMISAS' },
-  { id: 'chains', name: 'CORRENTES' },
-  { id: 'accessories', name: 'ACESSÓRIOS' },
-  { id: 'bottom', name: 'PARTE DE BAIXO' },
-  { id: 'shoes', name: 'CALÇADOS' },
+/** Espaços do armário (como nos battle royales): agrupados por parte do corpo. */
+const SLOT_GROUPS: Array<{ name: string; slots: Array<{ id: Category; name: string }> }> = [
+  { name: 'CABEÇA', slots: [{ id: 'hair', name: 'CABELO' }, { id: 'cap', name: 'BONÉ' }, { id: 'glasses', name: 'ÓCULOS' }, { id: 'phones', name: 'FONE' }] },
+  { name: 'CORPO', slots: [{ id: 'jersey', name: 'CAMISA' }, { id: 'chains', name: 'CORRENTE' }, { id: 'bottom', name: 'CALÇA/BERMUDA' }, { id: 'shoes', name: 'TÊNIS' }] },
+  { name: 'EXTRAS', slots: [{ id: 'watch', name: 'RELÓGIO' }, { id: 'bracelet', name: 'PULSEIRA' }, { id: 'backpack', name: 'MOCHILA' }] },
 ];
+
+/** Acessórios de cada espaço (um por vez; pulseiras podem ser as duas). */
+const ACC_SLOTS: Partial<Record<Category, { ids: AccessoryId[]; none: string; multi?: boolean }>> = {
+  cap: { ids: ['bone_frente', 'bone_aba_reta', 'bone_tras'], none: 'Sem boné' },
+  phones: { ids: [...HEADPHONES], none: 'Sem fone' },
+  watch: { ids: [...WATCHES], none: 'Sem relógio' },
+  bracelet: { ids: ['pulseiras', 'pulseira_ouro'], none: 'Sem pulseira', multi: true },
+  backpack: { ids: [...BACKPACKS], none: 'Sem mochila' },
+};
+
+/** Cores de cada acessório (amostras no cartão e no espaço). */
+const ACC_COLORS: Partial<Record<AccessoryId, string[]>> = {
+  bone_tras: ['#e8322b', '#16100c'],
+  bone_frente: ['#2457c5', '#16100c'],
+  bone_aba_reta: ['#16100c', '#ffd21f'],
+  pulseiras: ['#ffc23a', '#16100c', '#1fa64a'],
+  pulseira_ouro: ['#ffb52e'],
+  relogio: ['#c8ccd2', '#1fa66a'],
+  relogio_azul: ['#c8ccd2', '#2457c5'],
+  relogio_preto: ['#c8ccd2', '#16100c'],
+  relogio_vermelho: ['#c8ccd2', '#d8242c'],
+  relogio_dourado: ['#ffc23a', '#c89a2a'],
+  mochila_esportiva: ['#b07a3a', '#16100c'],
+  mochila_esportiva_azul: ['#2a5fb8', '#16100c'],
+  mochila_esportiva_vermelha: ['#b8302a', '#16100c'],
+  mochila_tatica: ['#1d1e22'],
+  fone: ['#e8e8e8'],
+  fone_preto: ['#16100c'],
+  fone_vermelho: ['#d8242c'],
+  fone_azul: ['#2457c5'],
+  fone_rosa: ['#f07ab0'],
+};
 
 const el = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -180,6 +210,8 @@ export class Menu {
     el('tab-play').classList.toggle('hidden', tab !== 'play');
     el('tab-custom').classList.toggle('hidden', tab !== 'custom');
     el('tab-settings').classList.toggle('hidden', tab !== 'settings');
+    // No armário o chat e os botões de girar saem de cima dos espaços da esquerda.
+    document.body.classList.toggle('locker-open', tab === 'custom');
     this.onTab?.(tab);
   }
 
@@ -218,22 +250,75 @@ export class Menu {
 
   // ------------------------------------------------------------ personalizar
 
-  private renderCustom(): void {
-    const cats = el('custom-cats');
-    cats.innerHTML = '';
-    for (const c of CATEGORIES) {
-      const b = document.createElement('button');
-      b.className = 'cat-btn' + (c.id === this.category ? ' active' : '');
-      b.type = 'button';
-      b.textContent = c.name;
-      b.addEventListener('click', () => {
-        this.onClick?.();
-        this.endPreview();
-        this.category = c.id;
-        this.renderCustom();
-      });
-      cats.appendChild(b);
+  /** O que está equipado num espaço: nome e cores/miniatura para o quadradinho. */
+  private slotInfo(c: Category): { name: string; img?: string; colors: string[] } {
+    const app = this.appearance;
+    const acc = ACC_SLOTS[c];
+    if (acc) {
+      const on = acc.ids.filter((id) => app.accessories.includes(id));
+      if (!on.length) return { name: acc.none, colors: [] };
+      return { name: on.map((id) => ACCESSORY_OPTIONS.find((o) => o.id === id)?.name ?? id).join(' + '), colors: on.flatMap((id) => ACC_COLORS[id] ?? []) };
     }
+    switch (c) {
+      case 'hair':
+        return { name: HAIR_OPTIONS.find((o) => o.id === app.hair)?.name ?? '', colors: [HAIRS[app.hair].base, HAIRS[app.hair].highlight] };
+      case 'glasses':
+        return app.glasses === 'nenhum' ? { name: 'Sem óculos', colors: [] } : { name: GLASSES_OPTIONS.find((o) => o.id === app.glasses)?.name ?? '', img: glassesThumb(app.glasses), colors: [] };
+      case 'jersey':
+        return app.jersey === 'none' ? { name: 'Sem camisa', colors: [] } : { name: jerseyById(app.jersey)?.name ?? '', img: jerseyFiles(app.jersey).thumb, colors: [] };
+      case 'chains': {
+        const ch = CHAIN_CATALOG.find((x) => app.accessories.includes(x.id));
+        return ch ? { name: ch.name, img: chainThumb(ch.id), colors: [] } : { name: 'Sem corrente', colors: [] };
+      }
+      case 'bottom':
+        return { name: BOTTOM_CATALOG.find((x) => x.id === app.bottom)?.name ?? '', img: garmentFiles('bottom', app.bottom).thumb, colors: [] };
+      case 'shoes':
+        return { name: SHOE_CATALOG.find((x) => x.id === app.shoes)?.name ?? '', img: garmentFiles('feet', app.shoes).thumb, colors: [] };
+      default:
+        return { name: '', colors: [] };
+    }
+  }
+
+  /** Armário: espaços à esquerda (cada um mostra o que está equipado). */
+  private renderSlots(): void {
+    const wrap = el('custom-slots');
+    wrap.innerHTML = '';
+    for (const g of SLOT_GROUPS) {
+      const h = document.createElement('div');
+      h.className = 'slot-group';
+      h.textContent = g.name;
+      wrap.appendChild(h);
+      const grid = document.createElement('div');
+      grid.className = 'slot-grid';
+      for (const s of g.slots) {
+        const info = this.slotInfo(s.id);
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'locker-slot' + (s.id === this.category ? ' active' : '');
+        const pic = info.img
+          ? `<img src="${info.img}" alt="" draggable="false">`
+          : info.colors.length
+            ? `<div class="ls-sw">${info.colors.slice(0, 3).map((c) => `<i style="background:${c}"></i>`).join('')}</div>`
+            : '<div class="ls-empty">—</div>';
+        b.innerHTML = `<span class="ls-label">${s.name}</span>${pic}<span class="ls-name">${info.name}</span>`;
+        b.title = `${s.name}: ${info.name}`;
+        b.addEventListener('click', () => {
+          this.onClick?.();
+          this.endPreview();
+          this.category = s.id;
+          this.renderCustom();
+        });
+        grid.appendChild(b);
+      }
+      wrap.appendChild(grid);
+    }
+  }
+
+  private renderCustom(): void {
+    this.renderSlots();
+    const slot = SLOT_GROUPS.flatMap((g) => g.slots).find((s) => s.id === this.category);
+    el('custom-title').textContent = slot ? slot.name : 'PERSONALIZAR';
+    el('custom-cats').innerHTML = '';
 
     const box = el('custom-options');
     box.innerHTML = '';
@@ -264,35 +349,20 @@ export class Menu {
       case 'chains':
         this.renderChains(box);
         break;
-      case 'accessories': {
-        // As correntes têm categoria própria (CORRENTES); aqui ficam os demais acessórios.
-        const others = ACCESSORY_OPTIONS.filter((o) => !chainById(o.id));
-        const isChain = (a: AccessoryId) => !!chainById(a);
-        add({ id: 'none', name: 'Sem acessórios' }, !app.accessories.some((a) => !isChain(a)), ['transparent'], () =>
-          this.update({ ...app, accessories: app.accessories.filter(isChain) }),
-        );
-        const colors: Partial<Record<AccessoryId, string[]>> = {
-          bone_tras: ['#e8322b', '#16100c'],
-          bone_frente: ['#2457c5', '#16100c'],
-          bone_aba_reta: ['#16100c', '#ffd21f'],
-          pulseiras: ['#ffc23a', '#16100c', '#1fa64a'],
-          pulseira_ouro: ['#ffb52e'],
-          relogio: ['#c8ccd2', '#1fa66a'],
-          relogio_azul: ['#c8ccd2', '#2457c5'],
-          relogio_preto: ['#c8ccd2', '#16100c'],
-          relogio_vermelho: ['#c8ccd2', '#d8242c'],
-          relogio_dourado: ['#ffc23a', '#c89a2a'],
-          mochila_esportiva: ['#b07a3a', '#16100c'],
-          mochila_esportiva_azul: ['#2a5fb8', '#16100c'],
-          mochila_esportiva_vermelha: ['#b8302a', '#16100c'],
-          mochila_tatica: ['#1d1e22'],
-          fone: ['#e8e8e8'],
-          fone_preto: ['#16100c'],
-          fone_vermelho: ['#d8242c'],
-          fone_azul: ['#2457c5'],
-          fone_rosa: ['#f07ab0'],
-        };
-        for (const o of others) add(o, app.accessories.includes(o.id), colors[o.id] ?? [], () => this.update(toggleAccessory(app, o.id)));
+      case 'cap':
+      case 'phones':
+      case 'watch':
+      case 'bracelet':
+      case 'backpack': {
+        // Um espaço de acessório: "nenhum" + as opções dele (trocar já equipa na hora).
+        const s = ACC_SLOTS[this.category]!;
+        const without = app.accessories.filter((a) => !s.ids.includes(a));
+        add({ id: 'none', name: s.none }, !app.accessories.some((a) => s.ids.includes(a)), ['transparent'], () => this.update({ ...app, accessories: without }));
+        for (const id of s.ids) {
+          const o = ACCESSORY_OPTIONS.find((x) => x.id === id)!;
+          const pick = () => (s.multi ? this.update(toggleAccessory(app, id)) : this.update({ ...app, accessories: [...toggleAccessory({ ...app, accessories: without }, id).accessories] }));
+          add(o, app.accessories.includes(id), ACC_COLORS[id] ?? [], pick);
+        }
         break;
       }
       case 'bottom':

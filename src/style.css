@@ -1675,3 +1675,56 @@ body:not(.br) #zone-stat { display: none; }
 .slot .name { position: absolute; top: 4px; right: 6px; left: 22px; text-align: right; font: 800 9px 'Segoe UI', sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .slot .mag { position: absolute; left: 0; right: 0; bottom: 6px; text-align: center; font: 900 18px Impact, 'Arial Black', sans-serif; text-shadow: 0 1px 2px #000; }
 .slot .mag small { font-size: 12px; }
+
+
+/* ---------------------------------------------------------- Armário (personalizar) */
+#custom-locker {
+  position: absolute;
+  left: 22px;
+  top: 86px;
+  bottom: 22px;
+  width: 300px;
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(14, 18, 34, 0.86);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  overflow-y: auto;
+}
+#custom-panel { width: min(470px, 38vw); }
+#custom-cats { display: none; }
+.slot-group { margin: 10px 2px 6px; font: 900 11px 'Segoe UI', sans-serif; letter-spacing: 3px; color: var(--yellow); opacity: 0.9; }
+.slot-group:first-of-type { margin-top: 4px; }
+.slot-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.locker-slot {
+  position: relative;
+  height: 112px;
+  padding: 22px 6px 6px;
+  border-radius: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(165deg, rgba(58, 156, 255, 0.28), rgba(20, 26, 48, 0.9));
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  overflow: hidden;
+  transition: transform 0.12s, border-color 0.12s;
+}
+.locker-slot:hover { transform: translateY(-2px); border-color: rgba(255, 255, 255, 0.4); }
+.locker-slot.active { border-color: var(--yellow); box-shadow: 0 0 0 2px rgba(255, 210, 31, 0.35), 0 6px 16px rgba(0, 0, 0, 0.45); }
+.locker-slot .ls-label { position: absolute; top: 5px; left: 8px; font: 900 10px 'Segoe UI', sans-serif; letter-spacing: 1.5px; opacity: 0.8; }
+.locker-slot img { width: 100%; height: 56px; object-fit: contain; pointer-events: none; }
+.locker-slot .ls-sw { display: flex; gap: 4px; height: 56px; align-items: center; }
+.locker-slot .ls-sw i { width: 22px; height: 22px; border-radius: 6px; border: 1px solid rgba(0, 0, 0, 0.45); }
+.locker-slot .ls-empty { height: 56px; display: flex; align-items: center; font: 900 22px 'Segoe UI', sans-serif; opacity: 0.35; }
+.locker-slot .ls-name { width: 100%; text-align: center; font: 700 11px 'Segoe UI', sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 900px) {
+  #custom-locker { width: 220px; }
+  .locker-slot { height: 92px; }
+  .locker-slot img, .locker-slot .ls-sw, .locker-slot .ls-empty { height: 40px; }
+}
+
+body.locker-open #chat { left: 340px; width: min(360px, calc(100vw - 860px)); }
+body.locker-open #rotate-controls { left: calc(50% - 140px); }
+@media (max-width: 1100px) { body.locker-open #chat { display: none; } }
