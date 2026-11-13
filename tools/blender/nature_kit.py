@@ -33,8 +33,8 @@ out_glb = os.path.abspath(args[1] if len(args) > 1 else 'public/assets/world/nat
 
 # (nome no kit, triângulos alvo de perto, de longe, tipo de colisor)
 #   'tronco': caixa no tronco (árvores); 'pedra': caixa da pedra; None: sem colisão.
-TREE_NEAR = 1300
-TREE_FAR = 300
+TREE_NEAR = 820
+TREE_FAR = 220
 MODELS = [
     # Árvores de copa larga (a "árvore comum" do mapa).
     ('CommonTree_1', TREE_NEAR, TREE_FAR, 'tronco'), ('CommonTree_2', TREE_NEAR, TREE_FAR, 'tronco'), ('CommonTree_3', TREE_NEAR, TREE_FAR, 'tronco'),
@@ -48,25 +48,25 @@ MODELS = [
     # Retorcidas (figueiras da beira do rio).
     ('TwistedTree_1', TREE_NEAR, TREE_FAR, 'tronco'), ('TwistedTree_2', TREE_NEAR, TREE_FAR, 'tronco'), ('TwistedTree_3', TREE_NEAR, TREE_FAR, 'tronco'),
     # Secas (brejo e pedreira).
-    ('DeadTree_1', 1000, 300, 'tronco'), ('DeadTree_3', 1000, 300, 'tronco'),
+    ('DeadTree_1', 600, 140, 'tronco'), ('DeadTree_3', 600, 140, 'tronco'),
     # Floridas (ipê-rosa).
     ('CherryBlossom_1', TREE_NEAR, TREE_FAR, 'tronco'), ('CherryBlossom_3', TREE_NEAR, TREE_FAR, 'tronco'),
     # Moitas e plantas (sem colisão).
-    ('Bush_Common', 450, 180, None), ('Bush_Common_Flowers', 500, 200, None), ('Bush_Large', 450, 180, None),
-    ('Bush_Large_Flowers', 500, 200, None), ('Bush_Long_1', 400, 160, None),
-    ('Fern_1', 288, 120, None), ('Fern_2', 180, 100, None),
-    ('Plant_1_Big', 360, 150, None), ('Plant_2', 446, 150, None), ('Plant_3', 560, 180, None), ('Plant_5', 550, 180, None), ('Plant_7_Big', 112, 60, None),
-    ('Clover_1', 379, 150, None),
-    ('Flower_1_Group', 450, 200, None), ('Flower_2_Group', 400, 200, None), ('Flower_3_Group', 400, 200, None),
-    ('Flower_4_Group', 450, 200, None), ('Flower_7_Group', 400, 200, None), ('Flower_6', 93, 60, None),
-    ('Grass_Common_Short', 155, 80, None), ('Grass_Common_Tall', 326, 120, None), ('Grass_Wide_Tall', 506, 150, None),
-    ('Grass_Wispy_Tall', 622, 180, None), ('Grass_Wheat', 700, 250, None),
-    ('Mushroom_Common', 600, 200, None), ('Mushroom_RedCap', 500, 200, None), ('Mushroom_Oyster', 800, 250, None),
+    ('Bush_Common', 270, 99, None), ('Bush_Common_Flowers', 300, 110, None), ('Bush_Large', 270, 99, None),
+    ('Bush_Large_Flowers', 300, 110, None), ('Bush_Long_1', 240, 88, None),
+    ('Fern_1', 172, 66, None), ('Fern_2', 108, 55, None),
+    ('Plant_1_Big', 216, 82, None), ('Plant_2', 267, 82, None), ('Plant_3', 336, 99, None), ('Plant_5', 330, 99, None), ('Plant_7_Big', 67, 33, None),
+    ('Clover_1', 227, 82, None),
+    ('Flower_1_Group', 270, 110, None), ('Flower_2_Group', 240, 110, None), ('Flower_3_Group', 240, 110, None),
+    ('Flower_4_Group', 270, 110, None), ('Flower_7_Group', 240, 110, None), ('Flower_6', 55, 33, None),
+    ('Grass_Common_Short', 93, 44, None), ('Grass_Common_Tall', 195, 66, None), ('Grass_Wide_Tall', 303, 82, None),
+    ('Grass_Wispy_Tall', 373, 99, None), ('Grass_Wheat', 420, 137, None),
+    ('Mushroom_Common', 360, 110, None), ('Mushroom_RedCap', 300, 110, None), ('Mushroom_Oyster', 480, 137, None),
     # Pedras (com colisão).
-    ('Rock_Big_1', 900, 200, 'pedra'), ('Rock_Big_2', 900, 200, 'pedra'),
+    ('Rock_Big_1', 500, 120, 'pedra'), ('Rock_Big_2', 500, 120, 'pedra'),
     ('Rock_Medium_1', 342, 120, 'pedra'), ('Rock_Medium_2', 244, 100, 'pedra'), ('Rock_Medium_3', 400, 120, 'pedra'), ('Rock_Medium_4', 400, 120, 'pedra'),
-    ('Pebble_Round_1', 136, 60, None), ('Pebble_Round_3', 128, 60, None), ('Pebble_Square_1', 104, 50, None), ('Pebble_Square_4', 48, 30, None),
-    ('RockPath_Round_Small_1', 500, 150, None), ('RockPath_Square_Wide', 900, 250, None),
+    ('Pebble_Round_1', 81, 33, None), ('Pebble_Round_3', 76, 33, None), ('Pebble_Square_1', 62, 30, None), ('Pebble_Square_4', 40, 30, None),
+    ('RockPath_Round_Small_1', 300, 82, None), ('RockPath_Square_Wide', 540, 137, None),
 ]
 
 # Tamanho das texturas por papel (as de folhas precisam de alfa: ficam PNG).
@@ -168,10 +168,29 @@ PALETTE = {
 
 
 def recolor(img, key):
+    import numpy as np
+    if key == 'Leaves':
+        # Atlas das plantas e moitas: duas folhas vêm azul e vermelha (código do shader do
+        # kit). Viram verde (a azul) e verde-oliva (a vermelha), mantendo o claro-escuro.
+        w, h = img.size
+        px = np.empty(w * h * 4, dtype=np.float32)
+        img.pixels.foreach_get(px)
+        px = px.reshape(h, w, 4)
+        reg = px[h // 2:, int(w * 0.36):int(w * 0.75), :]
+        r, g, b = reg[..., 0].copy(), reg[..., 1].copy(), reg[..., 2].copy()
+        lum = np.maximum(np.maximum(r, g), b)
+        blue = (b > g) & (b > r)
+        red = (r > g * 1.15) & ~blue
+        for mask, tone in ((blue, (0.30, 0.78, 0.22)), (red, (0.62, 0.74, 0.20))):
+            for c in range(3):
+                ch = reg[..., c]
+                ch[mask] = lum[mask] * tone[c]
+        img.pixels.foreach_set(px.ravel())
+        img.update()
+        return
     pal = PALETTE.get(key)
     if not pal:
         return
-    import numpy as np
     px = np.empty(img.size[0] * img.size[1] * 4, dtype=np.float32)
     img.pixels.foreach_get(px)
     px = px.reshape(-1, 4)
@@ -179,7 +198,11 @@ def recolor(img, key):
     vis = px[:, 3] > 0.05
     lo = lum[vis].min() if vis.any() else 0.0
     hi = lum[vis].max() if vis.any() else 1.0
-    t = np.clip((lum - lo) / max(1e-4, hi - lo), 0, 1)[:, None]
+    if hi - lo < 0.15:
+        # Textura chapada (uma cor só): tom médio da espécie.
+        t = np.full((px.shape[0], 1), 0.62, dtype=np.float32)
+    else:
+        t = np.clip((lum - lo) / (hi - lo), 0, 1)[:, None]
     dark = np.array(pal[0], dtype=np.float32)[None, :]
     light = np.array(pal[1], dtype=np.float32)[None, :]
     px[:, :3] = dark * (1 - t) + light * t
@@ -217,7 +240,7 @@ def tri_count(obj):
     return sum(len(p.vertices) - 2 for p in obj.data.polygons)
 
 
-def thin_leaves(obj, keep):
+def thin_leaves(obj, keep, branches=6):
     """
     Versão de longe das copas: o Decimate não reduz cartões de folha soltos (cada um é um
     polígono isolado), então sorteia uma fração `keep` dos polígonos de folha, apaga o resto e
@@ -225,8 +248,6 @@ def thin_leaves(obj, keep):
     """
     me = obj.data
     leafy = {i for i, m in enumerate(me.materials) if m and base_name(m.name).startswith(('Leaves', 'Leaf', 'Flowers'))}
-    if not leafy:
-        return
     rnd = random.Random(len(me.polygons))
     grow = 1 / (keep ** 0.5)
     bm = bmesh.new()
@@ -253,8 +274,9 @@ def thin_leaves(obj, keep):
                         stack.append(h)
         comps.append(comp)
     comps.sort(key=len, reverse=True)
-    for comp in comps[6:]:
-        doomed.extend(comp)
+    if branches:
+        for comp in comps[branches:]:
+            doomed.extend(comp)
     for f in bm.faces:
         if f.material_index not in leafy:
             continue
@@ -265,6 +287,80 @@ def thin_leaves(obj, keep):
         for v in f.verts:
             v.co = c + (v.co - c) * grow
     bmesh.ops.delete(bm, geom=doomed, context='FACES')
+    bm.to_mesh(me)
+    bm.free()
+
+
+def thin_to(obj, target, far=False):
+    """
+    Corta até `target` triângulos o que o Decimate não reduz (pedaços soltos): fica o tronco
+    e os galhos maiores (até metade do orçamento, ou tudo se não houver folhas) e uma fração
+    sorteada dos cartões de folha, aumentados para a copa continuar cheia.
+    """
+    me = obj.data
+    leafy = {i for i, m in enumerate(me.materials) if m and base_name(m.name).startswith(('Leaves', 'Leaf', 'Flowers'))}
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bm.faces.ensure_lookup_table()
+    tris = lambda f: len(f.verts) - 2
+    leaf_faces = [f for f in bm.faces if f.material_index in leafy]
+    leaf_tris = sum(tris(f) for f in leaf_faces)
+    seen = set()
+    comps = []
+    for f in bm.faces:
+        if f.material_index in leafy or f.index in seen:
+            continue
+        stack = [f]
+        seen.add(f.index)
+        comp = []
+        while stack:
+            g = stack.pop()
+            comp.append(g)
+            for e in g.edges:
+                for h in e.link_faces:
+                    if h.index not in seen and h.material_index not in leafy:
+                        seen.add(h.index)
+                        stack.append(h)
+        comps.append(comp)
+    comps.sort(key=len, reverse=True)
+    # De longe o tronco quase não aparece: a maior parte do orçamento vai para a copa.
+    budget = target * ((0.3 if far else 0.5) if leaf_tris else 1.0)
+    doomed = []
+    used = 0
+    for k, comp in enumerate(comps):
+        n = sum(tris(f) for f in comp)
+        if (k > 0 or far) and used + n > budget and not (k == 0 and not leaf_tris):
+            doomed.extend(comp)
+        else:
+            used += n
+    if leaf_tris:
+        keep = min(1.0, max(0.05, (target - min(used, budget)) / leaf_tris))
+        grow = 1 / (keep ** 0.5)
+        rnd = random.Random(len(me.polygons) + 7)
+        # Cartões inteiros (ilhas de faces de folha), para não rasgar um cartão ao meio.
+        seen2 = set()
+        for f in leaf_faces:
+            if f.index in seen2:
+                continue
+            stack = [f]
+            seen2.add(f.index)
+            card = []
+            while stack:
+                g = stack.pop()
+                card.append(g)
+                for e in g.edges:
+                    for h in e.link_faces:
+                        if h.index not in seen2 and h.material_index in leafy:
+                            seen2.add(h.index)
+                            stack.append(h)
+            if rnd.random() > keep:
+                doomed.extend(card)
+                continue
+            verts = {v for g in card for v in g.verts}
+            c = sum((v.co for v in verts), Vector()) / len(verts)
+            for v in verts:
+                v.co = c + (v.co - c) * min(grow, 3.2 if far else 1.6)
+    bmesh.ops.delete(bm, geom=list(set(doomed)), context='FACES')
     bm.to_mesh(me)
     bm.free()
 
@@ -342,10 +438,15 @@ for kit_name, near, far, kind in MODELS:
     lod.data.name = lod.name
     bpy.context.collection.objects.link(lod)
     decimate(obj, near)
+    # Copas de cartões soltos não reduzem no Decimate: sorteia os que ficam (um pouco maiores).
+    if tri_count(obj) > near * 1.08:
+        thin_to(obj, near)
     # Longe: um terço dos cartões de folha (maiores) e o tronco bem simplificado.
     if kind == 'tronco':
         thin_leaves(lod, 0.3)
     decimate(lod, far)
+    if tri_count(lod) > far * 1.15:
+        thin_to(lod, far, far=True)
     OBJS += [obj, lod]
     if kind:
         add_colliders(obj, name, kind)
