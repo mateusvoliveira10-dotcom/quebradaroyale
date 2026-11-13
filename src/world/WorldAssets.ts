@@ -71,6 +71,13 @@ export class WorldAssets {
   readonly texturedProps = new Map<string, { model: WorldModel; materials: Map<string, Material> }>();
   /** Baús do loot (`tools/blender/chest.py`): base e tampa separadas, comum e épico (azul). */
   readonly chests = new Map<'bau' | 'bau_epico', { base: WorldModel; lid: WorldModel; materials: Map<string, Material> }>();
+  /**
+   * Natureza do kit Quaternius (`tools/blender/nature_kit.py`, nature.glb): Nat_<nome> e
+   * Nat_<nome>_lod1 (árvores, moitas, capim, flores, cogumelos, pedras), com os materiais do
+   * próprio arquivo (casca, folhas com recorte, pedra) em `natureMaterials` pelo nome.
+   */
+  readonly nature = new Map<string, WorldModel>();
+  readonly natureMaterials = new Map<string, Material>();
 
   static async load(scene: Scene): Promise<WorldAssets> {
     const base = `${import.meta.env.BASE_URL}assets/world/`;
@@ -135,6 +142,35 @@ export class WorldAssets {
       kit.dispose();
     } catch (e) {
       console.warn('[WorldAssets] kit.glb não carregou (casas do setor novo ficam sem janelas de verdade):', e);
+    }
+    try {
+      const c = await LoadAssetContainerAsync(`${base}nature.glb`, scene);
+      const models = collect(scene, c.meshes);
+      for (const [name, model] of models) {
+        if (name.startsWith('Col_')) continue;
+        model.colliders.push(...(models.get(`Col_${name}`)?.colliders ?? []));
+        assets.nature.set(name, model);
+      }
+      for (const mat of c.materials) {
+        if (mat instanceof PBRMaterial) {
+          mat.reflectionTexture = studioMaterial(scene, 'estudio_ref', '#ffffff', 0, 1).reflectionTexture;
+          mat.environmentIntensity = 1.0;
+          mat.specularIntensity = 0.15;
+          // Folhas (recorte): luz dos dois lados e sombra recortada.
+          if (mat.transparencyMode === Material.MATERIAL_ALPHATEST || mat.needAlphaTesting()) {
+            mat.transparencyMode = Material.MATERIAL_ALPHATEST;
+            mat.alphaCutOff = 0.4;
+            mat.backFaceCulling = false;
+            mat.twoSidedLighting = true;
+          }
+        }
+        scene.addMaterial(mat);
+        for (const t of mat.getActiveTextures()) scene.addTexture(t);
+        assets.natureMaterials.set(mat.name, mat);
+      }
+      for (const m of c.meshes) m.dispose(false, false);
+    } catch (e) {
+      console.warn('[WorldAssets] nature.glb não carregou (matas ficam com as árvores antigas):', e);
     }
     const props = collect(scene, vegetation.meshes);
     for (const [name, model] of props) {

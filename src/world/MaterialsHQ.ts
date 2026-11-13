@@ -64,6 +64,28 @@ export class MaterialsHQ {
   readonly pedra: StandardMaterial;
   /** Reboco do muro em volta da comunidade. */
   readonly muro: StandardMaterial;
+  // ---- Bairro e mansões (Jardim Primavera, Condomínio Bela Vista, fazenda).
+  /** Telha de barro em outras cores (verde do clube, grafite moderna). */
+  readonly telhaVerde: StandardMaterial;
+  readonly telhaGrafite: StandardMaterial;
+  /** Reboco liso branco/bege das casas de classe média e das mansões. */
+  readonly branco: StandardMaterial;
+  readonly bege: StandardMaterial;
+  readonly cinzaClaro: StandardMaterial;
+  /** Pisos internos: porcelanato claro e tábua corrida escura. */
+  readonly porcelanato: StandardMaterial;
+  readonly madeiraEscura: StandardMaterial;
+  /** Pedra lisa (bancadas e revestimentos). */
+  readonly marmore: StandardMaterial;
+  readonly inox: StandardMaterial;
+  /** Azulejo claro das piscinas e dos banheiros. */
+  readonly azulejo: StandardMaterial;
+  /** Grama aparada dos jardins. */
+  readonly grama: StandardMaterial;
+  /** Saibro da quadra de tênis. */
+  readonly saibro: StandardMaterial;
+  /** Tecidos de móveis (sofás, camas, cortinas) em cores sóbrias. */
+  readonly tecidos: StandardMaterial[];
 
   private readonly cache = new Map<string, Texture>();
 
@@ -86,6 +108,19 @@ export class MaterialsHQ {
     this.pedra = this.make('hq_pedra', 'pedra', '#ffffff', { bump: 1.2 });
     this.muro = this.make('hq_muro', 'reboco', '#e6dfcf', { bump: 0.8 });
     this.metalCru = this.make('hq_metal', 'metal', '#9aa0a6', { spec: 0.35, power: 50 });
+    this.telhaVerde = this.make('hq_telha_verde', 'telha', '#5f9a6a', { spec: 0.12, power: 30, bump: 1.2 });
+    this.telhaGrafite = this.make('hq_telha_grafite', 'telha', '#5a5d63', { spec: 0.18, power: 40, bump: 1.0 });
+    this.branco = this.make('hq_branco', 'reboco', '#f4f0e6', { bump: 0.5 });
+    this.bege = this.make('hq_bege', 'reboco', '#e9d9bd', { bump: 0.5 });
+    this.cinzaClaro = this.make('hq_cinza_claro', 'reboco', '#cfd2d4', { bump: 0.5 });
+    this.porcelanato = this.make('hq_porcelanato', 'piso', '#efe9df', { spec: 0.3, power: 70, shadow: false, bump: 0.3 });
+    this.madeiraEscura = this.make('hq_madeira_escura', 'madeira', '#7a4e2c', { spec: 0.12, power: 40 });
+    this.marmore = this.plain('hq_marmore', '#e8e5dc', 0.35, 80);
+    this.inox = this.plain('hq_inox', '#b9bec4', 0.6, 90);
+    this.azulejo = this.make('hq_azulejo', 'piso', '#8fd0e6', { spec: 0.4, power: 90, shadow: false, bump: 0.3 });
+    this.grama = this.make('hq_grama', 'terra', '#6cb84a', { shadow: false, bump: 0.4 });
+    this.saibro = this.make('hq_saibro', 'terra', '#d08a5a', { shadow: false, bump: 0.3 });
+    this.tecidos = ['#6b7f9a', '#8c6b5c', '#5f7a5a', '#9a8a6a', '#4f5d6e', '#a65a4a', '#d9d2c2'].map((c, i) => this.plain(`hq_tecido_${i}`, c, 0.04, 12));
 
     this.aluminio = this.plain('hq_aluminio', '#c9ccd0', 0.6, 70);
     this.vidro = this.plain('hq_vidro', '#2a3a48', 1.0, 110);

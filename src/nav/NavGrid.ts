@@ -1,4 +1,5 @@
 import { Vector3 } from '@babylonjs/core';
+import { WORLD } from '../core/config';
 import { Rng } from '../utils/random';
 import { ColliderIndex } from './ColliderIndex';
 
@@ -26,8 +27,9 @@ export class NavGrid {
   private readonly g: Float32Array;
   private readonly f: Float32Array;
   private readonly from: Int32Array;
-  private readonly stamp: Uint32Array;
-  private readonly closed: Uint32Array;
+  // Carimbos de 16 bits (a ilha de 1 km tem ~4 milhões de células: cada byte por célula conta).
+  private readonly stamp: Uint16Array;
+  private readonly closed: Uint16Array;
   private search = 1;
   /** Buscas restantes neste frame (orçamento global). */
   private budget = 2;
@@ -44,8 +46,8 @@ export class NavGrid {
     this.g = new Float32Array(total);
     this.f = new Float32Array(total);
     this.from = new Int32Array(total);
-    this.stamp = new Uint32Array(total);
-    this.closed = new Uint32Array(total);
+    this.stamp = new Uint16Array(total);
+    this.closed = new Uint16Array(total);
     this.comp = new Int32Array(total).fill(-1);
     this.build();
     this.buildComponents();
@@ -142,6 +144,11 @@ export class NavGrid {
         const k = j * n + i;
         const x = this.min + (i + 0.5) * this.cell;
         const z = this.min + (j + 0.5) * this.cell;
+        // Mar fundo além da praia: ninguém anda ali (e são 20% das células do quadrado).
+        if (x * x + z * z > (WORLD.radius + 6) ** 2) {
+          this.heights[k] = -999;
+          continue;
+        }
         const hit = this.index.surfaceBelow(x, z, 60);
         if (!hit || hit.ny < 0.6 || hit.y > 50) {
           this.heights[k] = -999;
@@ -277,6 +284,12 @@ export class NavGrid {
     if (!this.reachable(this.comp[s], this.comp[t])) return null;
 
     const n = this.n;
+    // Carimbo de 16 bits: perto do fim da contagem, zera tudo e recomeça.
+    if (this.search >= 65000) {
+      this.stamp.fill(0);
+      this.closed.fill(0);
+      this.search = 1;
+    }
     const id = ++this.search;
     const heap = new MinHeap(this.f);
     const ti = t % n;
