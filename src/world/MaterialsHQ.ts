@@ -109,6 +109,11 @@ export class MaterialsHQ {
     this.muro = this.make('hq_muro', 'reboco', '#e6dfcf', { bump: 0.8 });
     this.metalCru = this.make('hq_metal', 'metal', '#9aa0a6', { spec: 0.35, power: 50 });
     this.telhaVerde = this.make('hq_telha_verde', 'telha', '#5f9a6a', { spec: 0.12, power: 30, bump: 1.2 });
+    // Verde de verdade: a textura da telha é de barro (vermelha) e, multiplicada pelo verde,
+    // dava marrom; aqui fica só o relevo das telhas sobre a cor.
+    this.telhaVerde.diffuseTexture = null;
+    this.telhaVerde.diffuseColor = Color3.FromHexString('#3f8a55');
+    this.telhaVerde.emissiveColor = Color3.FromHexString('#0b1a10');
     this.telhaGrafite = this.make('hq_telha_grafite', 'telha', '#5a5d63', { spec: 0.18, power: 40, bump: 1.0 });
     this.branco = this.make('hq_branco', 'reboco', '#f4f0e6', { bump: 0.5 });
     this.bege = this.make('hq_bege', 'reboco', '#e9d9bd', { bump: 0.5 });
@@ -118,6 +123,9 @@ export class MaterialsHQ {
     this.marmore = this.plain('hq_marmore', '#e8e5dc', 0.35, 80);
     this.inox = this.plain('hq_inox', '#b9bec4', 0.6, 90);
     this.azulejo = this.make('hq_azulejo', 'piso', '#8fd0e6', { spec: 0.4, power: 90, shadow: false, bump: 0.3 });
+    // Porcelanato e azulejo: a textura de piso é de cerâmica vermelha (a cor clara por cima
+    // dava laranja); ficam lisos, só com o relevo do rejunte.
+    for (const mat of [this.porcelanato, this.azulejo]) mat.diffuseTexture = null;
     this.grama = this.make('hq_grama', 'terra', '#6cb84a', { shadow: false, bump: 0.4 });
     this.saibro = this.make('hq_saibro', 'terra', '#d08a5a', { shadow: false, bump: 0.3 });
     this.tecidos = ['#6b7f9a', '#8c6b5c', '#5f7a5a', '#9a8a6a', '#4f5d6e', '#a65a4a', '#d9d2c2'].map((c, i) => this.plain(`hq_tecido_${i}`, c, 0.04, 12));

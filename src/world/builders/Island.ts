@@ -10,6 +10,7 @@ import { buildHouse, HouseInfo } from './House';
 import { addCar, addFootballField, addPlasticChair, addPlasticTable, addSign } from './Props';
 import { scatterNature } from './Natureza';
 import { buildRoads, roadAt } from './Roads';
+import { buildRegioes } from './Bairros';
 import { addUnderbrush, pickSpecies, placeCacamba, placeProp, placeTextured, placeTree, prop } from './Vegetation';
 
 export interface IslandResult {
@@ -275,6 +276,12 @@ export function buildIsland(b: WorldBuilder, terrain: Terrain): IslandResult {
     loot(p.x - 8, p.z + 10, 1, 0.1);
     reserve(p.x, p.z, 6);
   }
+  // Regiões novas: bairro, condomínio das mansões, fazenda e os pontos da serra e da mata.
+  const reg = buildRegioes(b, terrain);
+  out.loot.push(...reg.loot);
+  out.blocked.push(...reg.blocked);
+  used.push(...reg.used);
+  console.info(`[mapa] regiões novas: ${reg.houses} casas com cômodos, ${reg.doors} portas, ${reg.pools} piscinas, ${reg.loot.length} pontos de loot`);
   // Estradas ligando a comunidade às regiões (com pontes sobre os rios) e, por último, a
   // natureza do kit por todo o anel (matas, serra, beira de rio, campos, praia).
   buildRoads(b, terrain);

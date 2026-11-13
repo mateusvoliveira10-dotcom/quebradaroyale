@@ -77,6 +77,27 @@ export const RIVERS: River[] = [
   { name: 'CÓRREGO DA SERRA', width: 6, path: [[200, -330], [215, -380], [238, -430], [268, -492]], levels: [7, 4.5, 1.5, 0] },
 ];
 
+/**
+ * Piscinas (mansões do condomínio): retângulo em coordenadas pares (a grade do relevo tem 2 m),
+ * superfície em `level` e fundo em `floor`. O relevo é cavado no retângulo (a rampa da cava
+ * fica por fora, debaixo do deck); a casa da piscina constrói o tanque e registra a água.
+ */
+export interface Pool {
+  name: string;
+  x0: number;
+  z0: number;
+  x1: number;
+  z1: number;
+  level: number;
+  floor: number;
+}
+
+export const POOLS: Pool[] = [
+  { name: 'piscina da vila branca', x0: -390, z0: -212, x1: -378, z1: -206, level: 3.45, floor: 1.9 },
+  { name: 'piscina da casa bege', x0: -294, z0: -224, x1: -286, z1: -212, level: 3.45, floor: 1.9 },
+  { name: 'piscina da casa moderna', x0: -308, z0: -302, x1: -296, z1: -296, level: 3.45, floor: 1.8 },
+];
+
 /** Áreas com nome do anel externo (as da comunidade ficam em CommunityMap). */
 export const OUTER_POIS: TerrainPoi[] = [
   { name: 'VILA DOS PESCADORES', x: 40, z: 455, r: 32 },
@@ -249,6 +270,8 @@ export class Terrain {
       // Um pouco abaixo do nível: pisos e quadras assentados nele não brigam com o chão.
       h = h * (1 - k) + p.level * k;
     }
+    // Piscinas: cava reta (os nós da grade dentro do retângulo descem abaixo do fundo).
+    for (const p of POOLS) if (x >= p.x0 - 0.01 && x <= p.x1 + 0.01 && z >= p.z0 - 0.01 && z <= p.z1 + 0.01) h = p.floor - 0.6;
     // Lagoas e lagos: bacia abaixo do nível da água e margem suave em volta.
     for (const l of LAKES) {
       const dl = Math.hypot(x - l.x, z - l.z);

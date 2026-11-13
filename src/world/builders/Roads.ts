@@ -20,7 +20,7 @@ export const ROADS: Road[] = [
   // Avenida leste → ponte do Rio Azul → Jardim Primavera.
   { name: 'Estrada do Jardim', kind: 'asfalto', width: 7, path: [[150, 0], [200, 8], [240, 30], [280, 30], [318, 30], [340, 30]] },
   // Avenida oeste → Mata do Sabiá → portaria do Condomínio Bela Vista.
-  { name: 'Estrada do Condomínio', kind: 'asfalto', width: 7, path: [[-150, 0], [-215, -10], [-270, -60], [-305, -125], [-325, -160]] },
+  { name: 'Estrada do Condomínio', kind: 'asfalto', width: 7, path: [[-150, 0], [-215, -10], [-270, -60], [-305, -125], [-322, -160], [-326, -184]] },
   // Avenida norte (ao lado do prédio do lobby) → Vila dos Pescadores.
   { name: 'Estrada da Praia', kind: 'terra', width: 5.5, path: [[14, 152], [30, 200], [36, 260], [40, 330], [40, 400], [40, 438]] },
   // Avenida sul → sopé do Pico → Serra Grande → Lagoa da Serra → Ferro-Velho.

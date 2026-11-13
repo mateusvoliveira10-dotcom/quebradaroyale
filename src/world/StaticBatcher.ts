@@ -62,6 +62,8 @@ const DETAIL_CULL: ReadonlyArray<[RegExp, number]> = [
   // Interior das casas (visto só pelas janelas), sombras de contato e pichações: de longe
   // não aparecem, e na rua eram centenas de lotes desenhados à toa.
   [/^hq_interior/, 75],
+  // Móveis e acabamentos de dentro das casas com cômodos (tecidos, bancadas, inox).
+  [/^hq_(tecido|marmore|inox|porcelanato)/, 96],
   [/^contactShadow$/, 106],
   [/^graffiti$/, 131],
 ];

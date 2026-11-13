@@ -385,8 +385,8 @@ export function furnishRoom(b: WorldBuilder, rng: Rng, room: RoomBox, rich: bool
     }
     case 'garagem': {
       // Carro estacionado (colide) se couber; bancada e prateleira de ferramentas.
-      if (f.w >= 2.8 && f.d >= 4.6 && rng.chance(0.7) && f.island(f.cx, f.cz, 1.9, 4.2, 0.1, false)) addCar(b, rng, f.cx, f.cz, Math.PI / 2 + (rng.chance(0.5) ? Math.PI : 0));
-      else if (f.d >= 2.8 && f.w >= 4.6 && rng.chance(0.7) && f.island(f.cx, f.cz, 4.2, 1.9, 0.1, false)) addCar(b, rng, f.cx, f.cz, rng.chance(0.5) ? Math.PI : 0);
+      if (f.w >= 2.8 && f.d >= 4.6 && rng.chance(0.7) && f.island(f.cx, f.cz, 1.9, 4.2, 0.1, false)) addCar(b, rng, f.cx, f.cz, Math.PI / 2 + (rng.chance(0.5) ? Math.PI : 0), 'comum', y - 0.06);
+      else if (f.d >= 2.8 && f.w >= 4.6 && rng.chance(0.7) && f.island(f.cx, f.cz, 4.2, 1.9, 0.1, false)) addCar(b, rng, f.cx, f.cz, rng.chance(0.5) ? Math.PI : 0, 'comum', y - 0.06);
       f.place(1.4, 0.5, 0.9, (put) => {
         put(0, 0, 1.4, 0.5, 0.05, 0.85, hq.madeira);
         put(0.02, 0.02, 0.06, 0.46, 0.85, 0, m.metalDark);
