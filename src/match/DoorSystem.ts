@@ -9,6 +9,17 @@ const BOT_REACH = 1.3;
 /** Tempo (s) de abrir/fechar. */
 const SWING_SHARPNESS = 7;
 
+/** Giro da dobradiça com a porta fechada (o mapa pode montar a porta já girada). */
+const baseYaw = new WeakMap<Door, number>();
+function closedYaw(d: Door): number {
+  let y = baseYaw.get(d);
+  if (y === undefined) {
+    y = d.pivot.rotation.y;
+    baseYaw.set(d, y);
+  }
+  return y;
+}
+
 /**
  * Portas que abrem (as que o mapa registrou em world/Doors): E abre e fecha, bots empurram ao
  * passar, o colisor gira junto com a folha e bloqueia movimento e tiros.
@@ -53,7 +64,7 @@ export class DoorSystem {
       if (Math.abs(d.target - d.open) < 1e-3) continue;
       d.open += (d.target - d.open) * k;
       if (Math.abs(d.target - d.open) < 1e-3) d.open = d.target;
-      d.pivot.rotation.y = d.openAngle * d.open;
+      d.pivot.rotation.y = closedYaw(d) + d.openAngle * d.open;
       d.pivot.computeWorldMatrix(true);
       d.collider.computeWorldMatrix(true);
     }
@@ -64,6 +75,7 @@ export class DoorSystem {
    * ganha o sinal certo); fecha de volta.
    */
   private toggle(d: Door, from: Vector3): void {
+    closedYaw(d);
     if (d.target > 0.5) {
       d.target = 0;
       this.onSound?.(false, d.center);
