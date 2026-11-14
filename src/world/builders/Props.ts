@@ -564,7 +564,7 @@ function pickCarModel(rng: Rng): CarModelId {
  * de táxi (amarelo) ou o giroflex e as portas escuras da viatura (genérica, sem brasão).
  * Sem o GLB carregado, cai no carro de caixas antigo.
  */
-export function addCar(b: WorldBuilder, rng: Rng, x: number, z: number, ry: number, variant: CarVariant = 'comum'): void {
+export function addCar(b: WorldBuilder, rng: Rng, x: number, z: number, ry: number, variant: CarVariant = 'comum', y = 0): void {
   const assets = WorldAssets.current;
   if (!assets) {
     addBoxCar(b, rng, x, z, ry);
@@ -575,12 +575,12 @@ export function addCar(b: WorldBuilder, rng: Rng, x: number, z: number, ry: numb
   // para a disposição das casas sorteadas depois continuar a mesma.
   const r = new Rng(rng.int(1, 1e9));
   // Viatura: o modelo detalhado enviado, quando carregou.
-  if (variant === 'policia' && addVehicle(b, 'viatura', x, z, ry)) return;
+  if (variant === 'policia' && addVehicle(b, 'viatura', x, z, ry, y)) return;
   const id = variant === 'comum' ? pickCarModel(r) : r.pick(['hatch', 'seda'] as const);
   // A perua de cars.py deu lugar à Kombi enviada (modelo detalhado com textura).
-  if (id === 'perua' && addVehicle(b, 'kombi', x, z, ry)) return;
+  if (id === 'perua' && addVehicle(b, 'kombi', x, z, ry, y)) return;
   // Gol quadrado (modelo enviado) em parte das vagas de hatch e sedã.
-  if ((id === 'hatch' || id === 'seda') && r.chance(0.5) && addVehicle(b, 'gol', x, z, ry)) return;
+  if ((id === 'hatch' || id === 'seda') && r.chance(0.5) && addVehicle(b, 'gol', x, z, ry, y)) return;
   const model = assets.cars.get(id)!;
   const paint = variant === 'taxi' ? m.carTaxi : variant === 'policia' ? m.carPaints[2] : r.pick(m.carPaints);
   // Perua de duas cores: teto/saia de cima branco; a viatura tem portas escuras.
@@ -601,10 +601,10 @@ export function addCar(b: WorldBuilder, rng: Rng, x: number, z: number, ry: numb
   };
   // O modelo tem a frente em -X; gira meia volta para manter o carro antigo (frente em +X).
   const rot = ry + Math.PI;
-  b.model(model, x, 0, z, rot, (role) => roles[role] ?? paint);
+  b.model(model, x, y, z, rot, (role) => roles[role] ?? paint);
 
   const cabin = model.colliders[1] ?? model.colliders[0];
-  const roofY = cabin.center.y + cabin.size.y / 2;
+  const roofY = y + cabin.center.y + cabin.size.y / 2;
   const [rx, rz] = local(x, z, rot, cabin.center.x, cabin.center.z);
   if (variant === 'taxi') {
     b.box({ w: 0.62, h: 0.05, d: 0.2, x: rx, z: rz, y: roofY + 0.02, mat: m.carTrim, ry: rot });
@@ -620,7 +620,7 @@ export function addCar(b: WorldBuilder, rng: Rng, x: number, z: number, ry: numb
   const sx = model.max.x - model.min.x;
   const sz = model.max.z - model.min.z;
   const along = Math.abs(Math.cos(ry)) > 0.5;
-  b.contactShadow(x, z, along ? sx - 0.3 : sz - 0.1, along ? sz - 0.1 : sx - 0.3, 0, 0.6);
+  b.contactShadow(x, z, along ? sx - 0.3 : sz - 0.1, along ? sz - 0.1 : sx - 0.3, y, 0.6);
 }
 
 /**
@@ -629,7 +629,7 @@ export function addCar(b: WorldBuilder, rng: Rng, x: number, z: number, ry: numb
  * triângulos; longe, a versão leve. `ry` segue a mesma convenção do addCar. Devolve false
  * se o modelo não carregou (o chamador decide o que pôr no lugar).
  */
-export function addVehicle(b: WorldBuilder, id: DetailedVehicleId, x: number, z: number, ry: number): boolean {
+export function addVehicle(b: WorldBuilder, id: DetailedVehicleId, x: number, z: number, ry: number, y = 0): boolean {
   const v = WorldAssets.current?.vehicles.get(id);
   if (!v) return false;
   const glass = vehicleGlass(b);
@@ -640,12 +640,12 @@ export function addVehicle(b: WorldBuilder, id: DetailedVehicleId, x: number, z:
   // são só duas no mapa, então ela usa o modelo completo sempre (some além de 130 m pelo
   // corte de detalhes do StaticBatcher).
   const lod = id === 'ambulancia' ? null : v.lod;
-  b.model(v.model, x, 0, z, rot, mat, lod ? { lod: 0 } : {});
-  if (lod) b.model(lod, x, 0, z, rot, mat, { lod: 1, collide: false });
+  b.model(v.model, x, y, z, rot, mat, lod ? { lod: 0 } : {});
+  if (lod) b.model(lod, x, y, z, rot, mat, { lod: 1, collide: false });
   const sx = v.model.max.x - v.model.min.x;
   const sz = v.model.max.z - v.model.min.z;
   const along = Math.abs(Math.cos(ry)) > 0.5;
-  b.contactShadow(x, z, along ? sx - 0.3 : sz - 0.1, along ? sz - 0.1 : sx - 0.3, 0, 0.6);
+  b.contactShadow(x, z, along ? sx - 0.3 : sz - 0.1, along ? sz - 0.1 : sx - 0.3, y, 0.6);
   return true;
 }
 

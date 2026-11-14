@@ -2,13 +2,16 @@ import { Color3, DynamicTexture, FresnelParameters, Mesh, MeshBuilder, StandardM
 import { instantiateModel } from '../ModelInstance';
 import { WORLD } from '../../core/config';
 import { Rng } from '../../utils/random';
-import { LAKE, OUTER_POIS, SEA_LEVEL, Terrain, TerrainPoi } from '../Terrain';
+import { LAKE, LAKES, OUTER_POIS, RIVERS, SEA_LEVEL, Terrain, TerrainPoi, waterEdgeDistance } from '../Terrain';
 import { WorldAssets } from '../WorldAssets';
 import { clearWater, registerDefaultWater } from '../Water';
 import { WorldBuilder } from '../WorldBuilder';
 import { buildHouse, HouseInfo } from './House';
 import { addCar, addFootballField, addPlasticChair, addPlasticTable, addSign } from './Props';
-import { addUnderbrush, BUSHES, pickSpecies, placeCacamba, placeProp, placeTextured, placeTree, prop } from './Vegetation';
+import { scatterNature } from './Natureza';
+import { buildRoads, roadAt } from './Roads';
+import { buildRegioes } from './Bairros';
+import { addUnderbrush, pickSpecies, placeCacamba, placeProp, placeTextured, placeTree, prop } from './Vegetation';
 
 export interface IslandResult {
   houses: HouseInfo[];
@@ -273,50 +276,16 @@ export function buildIsland(b: WorldBuilder, terrain: Terrain): IslandResult {
     loot(p.x - 8, p.z + 10, 1, 0.1);
     reserve(p.x, p.z, 6);
   }
-  // Árvores espalhadas por todo o anel externo, mais densas na mata e nos morros.
-  let trees = 0;
-  for (let tries = 0; tries < 9000 && trees < 520; tries++) {
-    const a = rng.range(0, Math.PI * 2);
-    const r = rng.range(WORLD.half * 0.9, WORLD.radius - 22);
-    const x = Math.cos(a) * r;
-    const z = Math.sin(a) * r;
-    if (Math.abs(x) < WORLD.half + 6 && Math.abs(z) < WORLD.half + 6) continue;
-    if (Math.hypot(x + 8, z - (WORLD.half + 13)) < 26) continue;
-    if (Math.hypot(x - LAKE.x, z - LAKE.z) < LAKE.r + 3) continue;
-    const inPoi = OUTER_POIS.find((q) => Math.hypot(x - q.x, z - q.z) < q.r);
-    const forest = Math.hypot(x - poi('MATA DO SABIÁ').x, z - poi('MATA DO SABIÁ').z) < 60;
-    if (inPoi && !forest) continue;
-    // Densidade por manchas (bosques e campos abertos).
-    const patch = Math.sin(x * 0.021 + Math.cos(z * 0.017) * 2) + Math.cos(z * 0.019 - Math.sin(x * 0.013));
-    if (!forest && patch < 0.2 && rng.chance(0.75)) continue;
-    if (!free(x, z, 3)) continue;
-    if (terrain.slopeNy(x, z) < 0.8) continue;
-    let species = pickSpecies(rng);
-    if (species === 'calcada') species = 'mangueira';
-    // Parte das árvores são os modelos enviados (arvore1 e arvore2).
-    const sent = rng.chance(0.3) && placeTextured(b, rng.chance(0.5) ? 'arvore1' : 'arvore2', x, H(x, z) - 0.15, z, rng.range(0, Math.PI * 2), rng.range(0.85, 1.15), [0.7, 3]);
-    if (!sent && !placeTree(b, species, x, H(x, z) - 0.1, z, rng.range(0, Math.PI * 2), rng.range(0.9, 1.4))) break;
-    reserve(x, z, 3);
-    trees++;
-    // Arbustos em volta da árvore (como as moitas do Fortnite).
-    for (let k = rng.int(0, 2); k > 0; k--) {
-      const ba = rng.range(0, Math.PI * 2);
-      const bx = x + Math.cos(ba) * rng.range(2.5, 4.5);
-      const bz = z + Math.sin(ba) * rng.range(2.5, 4.5);
-      placeProp(b, rng.pick(BUSHES), bx, H(bx, bz) - 0.05, bz, rng.range(0, 6), rng.range(0.8, 1.3));
-    }
-  }
-  // Moitas soltas pelos campos.
-  for (let i = 0; i < 260; i++) {
-    const a = rng.range(0, Math.PI * 2);
-    const r = rng.range(WORLD.half, WORLD.radius - 24);
-    const x = Math.cos(a) * r;
-    const z = Math.sin(a) * r;
-    if (Math.abs(x) < WORLD.half + 4 && Math.abs(z) < WORLD.half + 4) continue;
-    if (Math.hypot(x - LAKE.x, z - LAKE.z) < LAKE.r + 2 || !free(x, z, 1.5) || terrain.slopeNy(x, z) < 0.8) continue;
-    if (out.blocked.some((q) => x > q.x0 && x < q.x1 && z > q.z0 && z < q.z1)) continue;
-    placeProp(b, rng.pick(BUSHES), x, H(x, z) - 0.05, z, rng.range(0, 6), rng.range(0.8, 1.4));
-  }
+  // Regiões novas: bairro, condomínio das mansões, fazenda e os pontos da serra e da mata.
+  const reg = buildRegioes(b, terrain);
+  out.loot.push(...reg.loot);
+  out.blocked.push(...reg.blocked);
+  used.push(...reg.used);
+  console.info(`[mapa] regiões novas: ${reg.houses} casas com cômodos, ${reg.doors} portas, ${reg.pools} piscinas, ${reg.loot.length} pontos de loot`);
+  // Estradas ligando a comunidade às regiões (com pontes sobre os rios) e, por último, a
+  // natureza do kit por todo o anel (matas, serra, beira de rio, campos, praia).
+  buildRoads(b, terrain);
+  scatterNature(b, { terrain, blocked: out.blocked, used, loot: out.loot.map((l) => ({ x: l.pos.x, z: l.pos.z })) });
 
   // Capim e mato em touceiras por todo o anel externo (fora da praia e da água).
   const grass: Array<{ x: number; y: number; z: number; dry: boolean }> = [];
@@ -326,7 +295,7 @@ export function buildIsland(b: WorldBuilder, terrain: Terrain): IslandResult {
     const x = Math.cos(a) * r;
     const z = Math.sin(a) * r;
     if (Math.abs(x) < WORLD.half + 2 && Math.abs(z) < WORLD.half + 2) continue;
-    if (Math.hypot(x - LAKE.x, z - LAKE.z) < LAKE.r + 1) continue;
+    if (waterEdgeDistance(x, z) < 1 || roadAt(x, z).d < roadAt(x, z).hw + 0.5) continue;
     if (out.blocked.some((q) => x > q.x0 && x < q.x1 && z > q.z0 && z < q.z1)) continue;
     if (terrain.slopeNy(x, z) < 0.82) continue;
     const n = rng.int(3, 7);
@@ -540,7 +509,7 @@ function buildWater(b: WorldBuilder): void {
     [WORLD.radius + 8, '#34c3c8', 0.72],
     [WORLD.radius + 22, '#1f8fbf', 0.86],
     [WORLD.radius + 60, '#145f9e', 0.93],
-    [470, '#0d4580', 0.96],
+    [WORLD.radius + 170, '#0d4580', 0.96],
   ];
   const SEG = 160;
   const paths: Vector3[][] = bands.map(([r]) => {
@@ -628,7 +597,8 @@ function buildWater(b: WorldBuilder): void {
       const cz = Math.sin(a);
       // Onde o chão desce abaixo do mar, procurando de dentro para fora.
       let r = WORLD.radius - 40;
-      while (r < WORLD.radius + 30 && terrain.height(cx * r, cz * r) > SEA_LEVEL) r += 0.5;
+      // (a vila dos pescadores fica uns centímetros abaixo do zero: a folga evita espuma no meio dela)
+      while (r < WORLD.radius + 30 && terrain.height(cx * r, cz * r) > SEA_LEVEL - 0.3) r += 0.5;
       inner.push(new Vector3(cx * (r - 2.2), SEA_LEVEL + 0.04, cz * (r - 2.2)));
       outer.push(new Vector3(cx * (r + 2.6), SEA_LEVEL + 0.04, cz * (r + 2.6)));
     }
@@ -651,12 +621,43 @@ function buildWater(b: WorldBuilder): void {
   const lakeMat = water('lagoa', '#083a36', '#8fd6c8');
   lakeMat.diffuseColor = Color3.FromHexString('#4cb8a8');
   lakeMat.alpha = 0.86;
-  const lake = MeshBuilder.CreateDisc('lagoa', { radius: LAKE.r + 2, tessellation: 48 }, scene);
-  lake.rotation.x = Math.PI / 2;
-  lake.position.set(LAKE.x, LAKE.level, LAKE.z);
-  worldUV(lake);
-  lake.material = lakeMat;
-  lake.isPickable = false;
+  for (const l of LAKES) {
+    const lake = MeshBuilder.CreateDisc(`lago_${l.name}`, { radius: l.r + 2, tessellation: 48 }, scene);
+    lake.rotation.x = Math.PI / 2;
+    lake.position.set(l.x, l.level, l.z);
+    worldUV(lake);
+    lake.material = lakeMat;
+    lake.isPickable = false;
+    lake.freezeWorldMatrix();
+  }
+  // Rios: fita ao longo do eixo, na largura do rio, descendo com o nível; a água entra um
+  // pouco na margem (a calha do relevo é mais larga que a água) e termina antes do mar.
+  const riverMat = water('rio', '#0a3f3a', '#9ad8cc');
+  riverMat.diffuseColor = Color3.FromHexString('#58c0b0');
+  riverMat.alpha = 0.84;
+  for (const r of RIVERS) {
+    const left: Vector3[] = [];
+    const right: Vector3[] = [];
+    const hw = r.width / 2 + 0.6;
+    for (let i = 0; i < r.path.length; i++) {
+      const [x, z] = r.path[i];
+      if (Math.hypot(x, z) > WORLD.radius - 4) break;
+      const [ax, az] = r.path[Math.max(0, i - 1)];
+      const [bx, bz] = r.path[Math.min(r.path.length - 1, i + 1)];
+      const len = Math.hypot(bx - ax, bz - az) || 1;
+      const nx = -(bz - az) / len;
+      const nz = (bx - ax) / len;
+      const y = r.levels[i] + 0.02;
+      left.push(new Vector3(x + nx * hw, y, z + nz * hw));
+      right.push(new Vector3(x - nx * hw, y, z - nz * hw));
+    }
+    if (left.length < 2) continue;
+    const ribbon = MeshBuilder.CreateRibbon(`rio_${r.name}`, { pathArray: [left, right], sideOrientation: Mesh.DOUBLESIDE }, scene);
+    worldUV(ribbon);
+    ribbon.material = riverMat;
+    ribbon.isPickable = false;
+    ribbon.freezeWorldMatrix();
+  }
   let t = 0;
   scene.onBeforeRenderObservable.add(() => {
     t += scene.getEngine().getDeltaTime() / 1000;

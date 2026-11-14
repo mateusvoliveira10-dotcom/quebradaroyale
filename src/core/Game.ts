@@ -60,7 +60,9 @@ const BOT_NAMES = ['Biel do Morro', 'MC Pivete', 'Jão da Laje', 'Dudu Treta', '
 /** Bots criados na tela de carregamento (o Battle Royale usa 49: 50 na partida). */
 const WARM_BOTS = 49;
 /** Centro do Galpão da Quebrada (longe do mapa principal). */
-const GALPAO_CENTER = new Vector3(0, 0, 560);
+// Bem longe da ilha (raio 500 m, câmera enxerga 1200 m): em 560 ele aparecia boiando no mar em
+// frente à Vila dos Pescadores, e de dentro dele a ilha inteira era desenhada à toa.
+const GALPAO_CENTER = new Vector3(0, 0, 2400);
 
 /** Monta engine, cena, mundos e sistemas; gerencia os modos de jogo. */
 export class Game {

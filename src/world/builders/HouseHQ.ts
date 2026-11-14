@@ -92,6 +92,8 @@ export interface ShellStyle {
   brick: boolean;
   /** Fundo dos vãos de janela (cômodo na penumbra). */
   interior: Material;
+  /** Casa com interior de verdade: sem o fundo escuro atrás do vidro (vê-se o cômodo). */
+  open?: boolean;
 }
 
 /**
@@ -113,7 +115,7 @@ export function wallWithOpenings(b: WorldBuilder, f: Face, y0: number, H: number
     faceBox(b, f, l, r, oy1, top, WALL_T, 0, st.mat, st.uv);
     cursor = r;
     if (st.brick && oy1 + 0.14 < top) faceBox(b, f, l - 0.12, r + 0.12, oy1, oy1 + 0.14, WALL_T + 0.01, 0.01, hq.concreto, { tile: HQ_TILE.concreto });
-    if (o.kind === 'janela' || o.kind === 'basculante') faceBox(b, f, l, r, o.y0, oy1, 0.02, -(WALL_T - 0.02), st.interior);
+    if (!st.open && (o.kind === 'janela' || o.kind === 'basculante')) faceBox(b, f, l, r, o.y0, oy1, 0.02, -(WALL_T - 0.02), st.interior);
     const tint = o.tint;
     const role = (name: string) => hq.kitRole(name, tint);
     placeKit(b, k.name, f, o.u, o.y0 + k.h / 2, role);

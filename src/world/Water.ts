@@ -1,5 +1,5 @@
 import { WORLD } from '../core/config';
-import { LAKE, SEA_LEVEL, Terrain } from './Terrain';
+import { LAKES, RIVERS, SEA_LEVEL, Terrain } from './Terrain';
 
 /**
  * Registro das áreas de água onde dá para nadar (contrato entre o mapa e a jogabilidade).
@@ -106,7 +106,10 @@ export function riverWater(name: string, path: Array<[number, number]>, width: n
   };
 }
 
-/** Mar em volta da ilha e a lagoa que já existiam. Chamado pelo mapa ao montar a ilha. */
+/**
+ * Mar em volta da ilha, as lagoas e lagos (Terrain.LAKES) e os rios (Terrain.RIVERS).
+ * Chamado pelo mapa ao montar a ilha; as piscinas são registradas por cada mansão.
+ */
 export function registerDefaultWater(): void {
   addWater({
     name: 'mar',
@@ -117,5 +120,6 @@ export function registerDefaultWater(): void {
     z1: WORLD.extent * 2,
     contains: (x, z) => Math.hypot(x, z) > WORLD.radius - 12,
   });
-  addWater(circleWater('lagoa', LAKE.x, LAKE.z, LAKE.r, LAKE.level));
+  for (const l of LAKES) addWater(circleWater(l.name.toLowerCase(), l.x, l.z, l.r, l.level));
+  for (const r of RIVERS) addWater(riverWater(r.name.toLowerCase(), r.path, r.width, r.levels));
 }

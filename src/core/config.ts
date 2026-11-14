@@ -71,10 +71,10 @@ export const CAMERA = {
 };
 
 export const DROP = {
-  planeAltitude: 125,
+  planeAltitude: 140,
   planeSpeed: 38,
   /** Distância do centro onde o avião nasce/some. */
-  planeStartDistance: 430,
+  planeStartDistance: 660,
   freefallTerminal: 32,
   freefallDiveTerminal: 48,
   freefallSteer: 14,
@@ -94,8 +94,12 @@ export const WORLD = {
   half: 150,
   /** Metade da comunidade murada no centro do mapa (o mapa original, 148 × 148 m). */
   community: 74,
-  /** Raio da ilha até a linha da praia (m): a comunidade de 300 m fica no meio. */
-  radius: 300,
+  /**
+   * Raio da ilha até a linha da praia (m): a comunidade de 300 m fica no meio; em volta, o
+   * anel das áreas antigas (lagoa, pedreira, pico...) e, mais para fora, as regiões novas
+   * (Jardim Primavera, Condomínio Bela Vista, Mata Fechada, Serra Grande, Fazenda).
+   */
+  radius: 500,
   /** Metade do quadrado que cobre a ilha e um pouco de mar (grade do relevo, navegação, minimapa). */
-  extent: 340,
+  extent: 544,
 };
