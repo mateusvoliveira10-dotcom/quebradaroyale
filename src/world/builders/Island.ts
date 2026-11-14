@@ -597,7 +597,8 @@ function buildWater(b: WorldBuilder): void {
       const cz = Math.sin(a);
       // Onde o chão desce abaixo do mar, procurando de dentro para fora.
       let r = WORLD.radius - 40;
-      while (r < WORLD.radius + 30 && terrain.height(cx * r, cz * r) > SEA_LEVEL) r += 0.5;
+      // (a vila dos pescadores fica uns centímetros abaixo do zero: a folga evita espuma no meio dela)
+      while (r < WORLD.radius + 30 && terrain.height(cx * r, cz * r) > SEA_LEVEL - 0.3) r += 0.5;
       inner.push(new Vector3(cx * (r - 2.2), SEA_LEVEL + 0.04, cz * (r - 2.2)));
       outer.push(new Vector3(cx * (r + 2.6), SEA_LEVEL + 0.04, cz * (r + 2.6)));
     }
