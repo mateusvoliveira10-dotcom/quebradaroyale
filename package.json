@@ -12,7 +12,8 @@
   },
   "dependencies": {
     "@babylonjs/core": "^8.56.2",
-    "@babylonjs/loaders": "^8.56.2"
+    "@babylonjs/loaders": "^8.56.2",
+    "@babylonjs/serializers": "^8.56.2"
   },
   "devDependencies": {
     "typescript": "~5.8",

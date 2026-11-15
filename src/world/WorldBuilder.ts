@@ -90,12 +90,33 @@ function setWorldUV(mesh: Mesh, x: number, y: number, z: number, o: NonNullable<
   mesh.setVerticesData(VertexBuffer.UVKind, uv);
 }
 
+/** Modelo posto no mapa (registrado no modo de exportação para o Roblox). */
+export interface Placement {
+  model: WorldModel;
+  x: number;
+  y: number;
+  z: number;
+  ry: number;
+  scale: number;
+  /** Material escolhido para cada papel nesta cópia. */
+  mats: Map<string, Material>;
+}
+
+/**
+ * `?exportarRoblox` na URL: os modelos repetidos (carros, árvores, peças do kit) não entram
+ * nos lotes; só a posição de cada cópia é guardada (o Roblox importa o modelo uma vez e
+ * repete). Ver tools/RobloxExport.ts.
+ */
+export const EXPORT_MODE = typeof location !== 'undefined' && /[?&]exportarRoblox\b/.test(location.search);
+
 /**
  * Fábrica de geometria estática. Separa visual (agrupado no StaticBatcher) de
  * colisão (caixas invisíveis), mantendo poucos draw calls e colisores simples.
  */
 export class WorldBuilder {
   readonly colliders: Mesh[] = [];
+  /** Cópias de modelos postas no mapa (só no modo de exportação). */
+  readonly placements: Placement[] = [];
   /** Material antigo → material com textura em escala real (vazio com `?mapaAntigo`). */
   private readonly swap = new Map<Material, Swap>();
 
@@ -227,7 +248,17 @@ export class WorldBuilder {
    */
   model(model: WorldModel, x: number, y: number, z: number, ry: number, mat: (role: string) => Material | null, o: ModelOptions = {}): void {
     const k = o.scale ?? 1;
-    for (const [role, base] of model.parts) {
+    if (EXPORT_MODE && this.batch) {
+      // Exportação: a versão de longe some; a de perto vira só uma posição.
+      if (o.lod !== 1) {
+        const mats = new Map<string, Material>();
+        for (const role of model.parts.keys()) {
+          const m = mat(role);
+          if (m) mats.set(role, m);
+        }
+        this.placements.push({ model, x, y, z, ry, scale: k, mats });
+      }
+    } else for (const [role, base] of model.parts) {
       const material = mat(role);
       if (!material) continue;
       const mesh = base.clone(base.name, null, true);

@@ -20,6 +20,8 @@ export interface ModelCollider {
 }
 
 export interface WorldModel {
+  /** Nome do objeto no Blender (Car_hatch, Arv_mangueira...), para exportar posições. */
+  name?: string;
   /** Uma malha-base por papel de material. */
   parts: Map<string, Mesh>;
   colliders: ModelCollider[];
@@ -318,7 +320,7 @@ function collect(scene: Scene, meshes: ReadonlyArray<{ getTotalVertices(): numbe
   const get = (name: string): WorldModel => {
     let m = out.get(name);
     if (!m) {
-      m = { parts: new Map(), colliders: [], min: new Vector3(Infinity, Infinity, Infinity), max: new Vector3(-Infinity, -Infinity, -Infinity) };
+      m = { name, parts: new Map(), colliders: [], min: new Vector3(Infinity, Infinity, Infinity), max: new Vector3(-Infinity, -Infinity, -Infinity) };
       out.set(name, m);
     }
     return m;

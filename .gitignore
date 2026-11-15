@@ -9,3 +9,5 @@ art
 # Configuração local do Claude Code / editor.
 .claude
 __pycache__
+# Saída do exportador do mapa para o Roblox (arquivos grandes, gerados).
+exportar-roblox

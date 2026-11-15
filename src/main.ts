@@ -20,6 +20,16 @@ setTimeout(async () => {
     document.getElementById('loading')?.classList.add('hidden');
     // Facilita depuração pelo console do navegador.
     (window as unknown as { game: Game }).game = game;
+    // Exportador do mapa para o Roblox (só com ?exportarRoblox no servidor de desenvolvimento).
+    if (import.meta.env.DEV && /[?&]exportarRoblox/.test(location.search)) {
+      const { exportarRoblox } = await import('./tools/RobloxExport');
+      const save = async (name: string, data: Blob | string) => {
+        const r = await fetch(`/__exportar?arquivo=${encodeURIComponent(name)}`, { method: 'POST', body: data });
+        if (!r.ok) throw new Error(`falhou ao salvar ${name}`);
+      };
+      (window as unknown as { exportarRoblox: () => Promise<string> }).exportarRoblox = () => exportarRoblox(game, save);
+      console.info('[QUEBRADA] Modo exportação: rode exportarRoblox() no console.');
+    }
   } catch (err) {
     console.error(err);
     const t = document.getElementById('loading-text');
